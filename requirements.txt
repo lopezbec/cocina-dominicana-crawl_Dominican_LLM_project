@@ -1,4 +1,4 @@
-firecrawl-py>=0.0.16
+firecrawl
 python-dotenv>=1.0.0
 beautifulsoup4>=4.12.0
 requests>=2.31.0

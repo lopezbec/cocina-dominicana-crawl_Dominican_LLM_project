@@ -1,0 +1,35 @@
+{
+  "scraping_session": {
+    "start_time": "2025-10-12T22:54:48.597390",
+    "end_time": "2025-10-12T22:54:49.064627",
+    "duration_seconds": 0.467237,
+    "total_articles_scraped": 18,
+    "total_sections_failed": 0
+  },
+  "sections": {
+    "cultura_origenes": {
+      "name": "Cultura y Orígenes",
+      "url": "https://www.cocinadominicana.com/cultura/herencia",
+      "articles_scraped": 10,
+      "directory": "cultura_origenes"
+    },
+    "tradiciones_costumbres": {
+      "name": "Tradiciones y Costumbres",
+      "url": "https://www.cocinadominicana.com/cultura/tradiciones-costumbres",
+      "articles_scraped": 0,
+      "directory": "tradiciones_costumbres"
+    },
+    "festividades_celebraciones": {
+      "name": "Festividades y Celebraciones",
+      "url": "https://www.cocinadominicana.com/cultura/celebraciones",
+      "articles_scraped": 0,
+      "directory": "festividades_celebraciones"
+    },
+    "comparaciones": {
+      "name": "Comparaciones",
+      "url": "https://www.cocinadominicana.com/cultura/versus",
+      "articles_scraped": 8,
+      "directory": "comparaciones"
+    }
+  }
+}
