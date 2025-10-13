@@ -1,5 +1,5 @@
 """
-Complete Dominican Culture Scraper using Firecrawl - Version 2
+Dominican Culture Scraper using Firecrawl
 Includes rate limiting and retry logic
 """
 
@@ -58,7 +58,7 @@ class DominicanCultureScraperV2:
             section_dir.mkdir(exist_ok=True)
     
     def safe_scrape(self, url: str, max_retries: int = 3, base_delay: int = 20) -> Optional[object]:
-        """Safely scrape with rate limiting and retry logic"""
+        """Safely scrape with rate-limiting and retry logic"""
         for attempt in range(max_retries):
             try:
                 doc = self.firecrawl.scrape(url, formats=["markdown"])
@@ -68,7 +68,7 @@ class DominicanCultureScraperV2:
                 error_msg = str(e)
                 
                 if "Rate Limit Exceeded" in error_msg:
-                    # Extract wait time from error message
+                    # Extract wait time from an error message
                     wait_time = base_delay
                     if "retry after" in error_msg:
                         try:
@@ -79,7 +79,7 @@ class DominicanCultureScraperV2:
                             pass
                     
                     print(f"⏳ Rate limit hit. Waiting {wait_time + 5} seconds...")
-                    time.sleep(wait_time + 5)  # Add 5 seconds buffer
+                    time.sleep(wait_time + 5)  # Add 5-second buffer
                     
                     if attempt < max_retries - 1:
                         print(f"🔄 Retrying {url} (attempt {attempt + 2}/{max_retries})")
@@ -103,7 +103,7 @@ class DominicanCultureScraperV2:
             print("❌ Failed to scrape section page")
             return []
             
-        # Check if document has markdown content
+        # Check if a document has markdown content
         if not hasattr(doc, 'markdown') or not getattr(doc, 'markdown', None):
             print("❌ No markdown content found")
             return []
@@ -152,7 +152,7 @@ class DominicanCultureScraperV2:
             print(f"❌ Failed to scrape {url}")
             return None
             
-        # Check if document has markdown content
+        # Check if a document has markdown content
         if not hasattr(doc, 'markdown') or not getattr(doc, 'markdown', None):
             print(f"❌ No content found for {url}")
             return None
@@ -196,7 +196,7 @@ class DominicanCultureScraperV2:
         
         section_dir = self.output_dir / section_directory
         
-        # Create safe filename
+        # Create a safe filename
         safe_filename = re.sub(r'[^\w\-_.]', '_', article_data['url_slug'])
         safe_filename = safe_filename[:100]  # Limit length
         
@@ -294,7 +294,7 @@ class DominicanCultureScraperV2:
             try:
                 self.scrape_section(section_key)
                 
-                # Count files in section
+                # Count files in a section
                 section_dir = self.output_dir / self.sections[section_key]['directory']
                 md_files = list(section_dir.glob("*.md"))
                 total_scraped += len(md_files)
