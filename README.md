@@ -75,10 +75,10 @@ python scraper.py
 ### Programmatic Usage
 
 ```python
-from scraper import DominicanCultureScraperV2
+from scraper import Scraper
 
 # Initialize scraper
-scraper = DominicanCultureScraperV2()
+scraper = Scraper()
 
 # Scrape all sections
 scraper.scrape_all_sections()
@@ -219,7 +219,7 @@ The codebase follows Clean Code principles:
 ### Key Components
 
 **Core Classes**
-- `DominicanCultureScraperV2`: Main scraper orchestration
+- `Scraper`: Main scraper orchestration
 - `PerformanceTimer`: Context manager for operation timing
 
 **Utility Functions**
@@ -235,12 +235,12 @@ The codebase follows Clean Code principles:
 python3 -m py_compile scraper.py utils.py
 
 # Test import
-python3 -c "from scraper import DominicanCultureScraperV2; print('Import successful')"
+python3 -c "from scraper import Scraper; print('Import successful')"
 
 # Dry run (test configuration)
 python3 -c "
-from scraper import DominicanCultureScraperV2
-scraper = DominicanCultureScraperV2()
+from scraper import Scraper
+scraper = Scraper()
 print(f'Configured for {len(scraper.sections)} sections')
 print(f'Output directory: {scraper.output_dir}')
 "
