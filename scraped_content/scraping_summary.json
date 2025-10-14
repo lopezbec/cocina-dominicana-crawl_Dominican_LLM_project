@@ -1,8 +1,8 @@
 {
   "scraping_session": {
-    "start_time": "2025-10-12T23:26:02.718668",
-    "end_time": "2025-10-12T23:26:05.777246",
-    "duration_seconds": 3.058578,
+    "start_time": "2025-10-14T14:15:41.168331",
+    "end_time": "2025-10-14T14:16:06.862485",
+    "duration_seconds": 25.694154,
     "total_articles_scraped": 91,
     "total_sections_failed": 0
   },

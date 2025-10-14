@@ -1,6 +1,6 @@
 """
 Dominican Culture Scraper using Firecrawl
-Includes rate limiting and retry logic
+Includes rate-limiting and retry logic
 """
 
 from firecrawl import Firecrawl
@@ -17,7 +17,7 @@ from utils import setup_canonical_logger, log_canonical, PerformanceTimer, creat
 load_dotenv()
 
 
-class DominicanCultureScraperV2:
+class Scraper:
     def __init__(self):
         self.logger = setup_canonical_logger(__name__)
         self.api_key = os.getenv("FIRECRAWL_API_KEY")
@@ -401,5 +401,5 @@ class DominicanCultureScraperV2:
 
 
 if __name__ == "__main__":
-    scraper = DominicanCultureScraperV2()
+    scraper = Scraper()
     scraper.scrape_all_sections()
