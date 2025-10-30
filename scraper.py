@@ -20,11 +20,9 @@ load_dotenv()
 class Scraper:
     def __init__(self):
         self.logger = setup_canonical_logger(__name__)
-        self.api_key = os.getenv("FIRECRAWL_API_KEY")
-        if not self.api_key:
-            raise ValueError("FIRECRAWL_API_KEY not found in environment")
-
-        self.firecrawl = Firecrawl(api_key=self.api_key)
+        self.api_url = os.getenv("FIRECRAWL_API_URL", "http://localhost:3002")
+        self.firecrawl = Firecrawl(api_url=self.api_url)
+        log_canonical(self.logger, "firecrawl_initialized", api_url=self.api_url)
         self.base_url = "https://www.cocinadominicana.com"
         self._initialize_sections()
         self._create_output_directories()
@@ -63,25 +61,7 @@ class Scraper:
             section_dir = self.output_dir / section_info["directory"]
             section_dir.mkdir(exist_ok=True)
 
-    def _handle_rate_limit_error(self, error_msg: str, base_delay: int) -> int:
-        """Handle rate limit error and return wait time."""
-        wait_time = base_delay
-        if "retry after" in error_msg:
-            try:
-                match = re.search(r'retry after (\d+)s', error_msg)
-                if match:
-                    wait_time = int(match.group(1))
-            except:
-                pass
-
-        final_wait = wait_time + 5
-        log_canonical(self.logger, "rate_limit_encountered",
-                      wait_time=final_wait, original_delay=wait_time)
-        time.sleep(final_wait)
-        return final_wait
-
-    def scrape_with_retry(self, url: str, max_retries: int = 3, base_delay: int = 20) -> Optional[object]:
-        """Safely scrape with rate-limiting and retry logic."""
+    def scrape_with_retry(self, url: str, max_retries: int = 3, base_delay: int = 2) -> Optional[object]:
         with PerformanceTimer() as timer:
             for attempt in range(max_retries):
                 try:
@@ -92,21 +72,11 @@ class Scraper:
 
                 except Exception as e:
                     error_msg = str(e)
-
-                    if "Rate Limit Exceeded" in error_msg:
-                        self._handle_rate_limit_error(error_msg, base_delay)
-
-                        if attempt < max_retries - 1:
-                            log_canonical(self.logger, "scrape_retry",
-                                          url=url, attempt=attempt + 2, max_retries=max_retries)
-                            continue
-
                     log_canonical(self.logger, "scrape_error",
                                   url=url, attempt=attempt + 1, error=error_msg)
 
                     if attempt < max_retries - 1:
-                        delay = base_delay * (2 ** attempt)
-                        time.sleep(delay)
+                        time.sleep(base_delay)
 
             log_canonical(self.logger, "scrape_failed",
                           url=url, max_retries=max_retries, duration_ms=timer.duration_ms)
@@ -289,7 +259,7 @@ class Scraper:
             else:
                 failed_count += 1
 
-            time.sleep(3)
+            time.sleep(0.5)
 
         return {
             "scraped": scraped_count,
