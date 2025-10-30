@@ -86,18 +86,50 @@ Or with custom output:
 python cli.py scrape-list my_recipes.txt --output favorite_recipes
 ```
 
-### 5. Discover URLs Without Scraping
+### 5. Discover URLs with Interactive Menu
 
-Preview what would be scraped from a page:
+Discover URLs and choose what to do with them:
 
 ```bash
-make scrape-discover URL="https://www.cocinadominicana.com/inicia"
+make scrape-discover URL="https://www.cocinadominicana.com/cocina"
 ```
 
-Save discovered URLs to a file:
+**Interactive workflow:**
+1. Discovers all URLs from the page
+2. Displays numbered list of found URLs
+3. Shows menu with 3 options:
+   - **Option 1:** Scrape all URLs immediately (saved to `scraped_content/cocina/`)
+   - **Option 2:** Save URLs to file (`cocina_urls.txt` or custom with `--save`)
+   - **Option 3:** Exit without action
+
+**Example output:**
+```
+Discovered 15 URLs from https://www.cocinadominicana.com/cocina:
+
+    1. https://www.cocinadominicana.com/tecnicas-de-coccion
+    2. https://www.cocinadominicana.com/como-hacer-sofrito
+    ...
+
+======================================================================
+  DISCOVERED URLs: 15
+  Source: https://www.cocinadominicana.com/cocina
+  Section: cocina
+======================================================================
+
+What would you like to do?
+
+  [1] Scrape all URLs now (save to: scraped_content/cocina)
+  [2] Save URLs to file
+  [3] Nothing (exit)
+
+Enter your choice [1-3]: _
+```
+
+**Non-interactive mode for scripting:**
 
 ```bash
-python cli.py discover "https://www.cocinadominicana.com/inicia" --save discovered_urls.txt
+make scrape-discover URL="https://..." SAVE=urls.txt NOINTERACTIVE=1
+python cli.py discover "https://..." --no-interactive --save urls.txt
 ```
 
 Then review and scrape selected URLs:

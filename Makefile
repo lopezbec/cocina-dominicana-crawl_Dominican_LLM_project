@@ -49,7 +49,7 @@ help:
 	@echo "    make scrape-url URL=<url>      Scrape a single URL"
 	@echo "    make scrape-category URL=<url> Crawl category and scrape articles"
 	@echo "    make scrape-list FILE=<file>   Scrape URLs from file"
-	@echo "    make scrape-discover URL=<url> Discover URLs without scraping"
+	@echo "    make scrape-discover URL=<url> Discover URLs with interactive menu"
 	@echo "    make test                      Test Firecrawl endpoint"
 	@echo "    make clean                     Remove scraped content and logs"
 	@echo "    make clean-all                 Remove all generated files including Firecrawl"
@@ -217,11 +217,20 @@ scrape-list: check-python
 scrape-discover: check-python
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-discover URL=https://www.cocinadominicana.com/inicia"; \
+		echo "Usage: make scrape-discover URL=https://www.cocinadominicana.com/cocina"; \
+		echo "       make scrape-discover URL=https://... SAVE=urls.txt NOINTERACTIVE=1"; \
 		exit 1; \
 	fi
 	@echo "Discovering URLs from: $(URL)"
-	@$(PYTHON) cli.py discover "$(URL)"
+	@if [ -n "$(NOINTERACTIVE)" ]; then \
+		if [ -n "$(SAVE)" ]; then \
+			$(PYTHON) cli.py discover "$(URL)" --no-interactive --save "$(SAVE)"; \
+		else \
+			$(PYTHON) cli.py discover "$(URL)" --no-interactive; \
+		fi \
+	else \
+		$(PYTHON) cli.py discover "$(URL)"; \
+	fi
 
 test:
 	@echo ""

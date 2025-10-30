@@ -280,14 +280,25 @@ make scrape-list FILE=urls.txt
 python cli.py scrape-list urls.txt --output batch
 ```
 
-#### Discover URLs Without Scraping
+#### Discover URLs with Interactive Menu
 
-Preview what URLs would be scraped from a page:
+Discover URLs and choose what to do with them through an interactive menu:
 
 ```bash
-make scrape-discover URL="https://www.cocinadominicana.com/inicia"
-python cli.py discover "https://www.cocinadominicana.com/inicia"
-python cli.py discover "https://www.cocinadominicana.com/inicia" --save discovered.txt
+make scrape-discover URL="https://www.cocinadominicana.com/cocina"
+python cli.py discover "https://www.cocinadominicana.com/cocina"
+```
+
+**Interactive Menu Options:**
+1. **Scrape all URLs now** - Immediately scrape discovered URLs to `scraped_content/<section>/`
+2. **Save URLs to file** - Save URLs to `<section>_urls.txt` or custom file with `--save`
+3. **Nothing (exit)** - Just preview URLs and exit
+
+**Non-Interactive Mode (for scripting):**
+
+```bash
+make scrape-discover URL="https://..." SAVE=urls.txt NOINTERACTIVE=1
+python cli.py discover "https://..." --no-interactive --save urls.txt
 ```
 
 ### CLI Commands Reference
@@ -298,7 +309,7 @@ python cli.py discover "https://www.cocinadominicana.com/inicia" --save discover
 | `scrape <url>` | Scrape single URL | `python cli.py scrape <url>` |
 | `crawl <url>` | Crawl category and scrape articles | `python cli.py crawl <url> --depth 2` |
 | `scrape-list <file>` | Scrape URLs from file | `python cli.py scrape-list urls.txt` |
-| `discover <url>` | Discover URLs without scraping | `python cli.py discover <url>` |
+| `discover <url>` | Discover URLs with interactive menu | `python cli.py discover <url>` |
 
 ### Programmatic Usage
 

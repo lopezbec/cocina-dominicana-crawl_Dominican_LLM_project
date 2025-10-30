@@ -8,6 +8,7 @@ import argparse
 import sys
 from pathlib import Path
 from typing import List
+from urllib.parse import urlparse
 from scraper import Scraper
 from utils import setup_canonical_logger, log_canonical
 
@@ -126,6 +127,41 @@ def scrape_all_sections(args):
     return 0
 
 
+def extract_section_name_from_url(url: str) -> str:
+    parsed = urlparse(url)
+    path_parts = [p for p in parsed.path.strip('/').split('/') if p]
+    
+    if path_parts:
+        return '_'.join(path_parts)
+    return 'discovered'
+
+
+def display_interactive_menu(urls: List[str], source_url: str, section_name: str) -> int:
+    print(f"\n{'='*70}")
+    print(f"  DISCOVERED URLs: {len(urls)}")
+    print(f"  Source: {source_url}")
+    print(f"  Section: {section_name}")
+    print(f"{'='*70}\n")
+    
+    print("What would you like to do?\n")
+    print(f"  [1] Scrape all URLs now (save to: scraped_content/{section_name})")
+    print(f"  [2] Save URLs to file")
+    print(f"  [3] Nothing (exit)")
+    print()
+    
+    while True:
+        try:
+            choice = input("Enter your choice [1-3]: ").strip()
+            
+            if choice in ['1', '2', '3']:
+                return int(choice)
+            else:
+                print("Invalid choice. Please enter 1, 2, or 3.")
+        except (KeyboardInterrupt, EOFError):
+            print("\n\nCancelled by user")
+            return 3
+
+
 def discover_urls(args):
     logger = setup_canonical_logger(__name__)
     log_canonical(logger, "cli_discover_started", url=args.url)
@@ -133,20 +169,85 @@ def discover_urls(args):
     scraper = Scraper(config_path=args.config)
     urls = scraper.auto_discover_urls(args.url, use_config_filters=not args.no_filter)
     
+    if not urls:
+        print(f"\nNo URLs discovered from {args.url}")
+        log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=0)
+        return 0
+    
     print(f"\nDiscovered {len(urls)} URLs from {args.url}:\n")
     
-    for url in urls:
-        print(url)
+    for i, url in enumerate(urls, 1):
+        print(f"  {i:3d}. {url}")
     
-    if args.save:
-        output_file = Path(args.save)
-        with open(output_file, 'w', encoding='utf-8') as f:
-            for url in urls:
-                f.write(f"{url}\n")
-        print(f"\nURLs saved to: {output_file}")
+    section_name = extract_section_name_from_url(args.url)
     
-    log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=len(urls))
-    return 0
+    if args.interactive:
+        choice = display_interactive_menu(urls, args.url, section_name)
+        
+        if choice == 1:
+            print(f"\n{'='*70}")
+            print(f"  SCRAPING {len(urls)} URLs")
+            print(f"  Output directory: scraped_content/{section_name}")
+            print(f"{'='*70}\n")
+            
+            success_count = 0
+            failed_count = 0
+            
+            for i, url in enumerate(urls, 1):
+                print(f"\n[{i}/{len(urls)}] Scraping: {url}")
+                result = scraper.scrape_url(url, output_directory=section_name)
+                
+                if result:
+                    print(f"  ✓ Success: {result['title']} ({result['word_count']} words)")
+                    success_count += 1
+                else:
+                    print(f"  ✗ Failed to scrape")
+                    failed_count += 1
+            
+            print(f"\n{'='*70}")
+            print(f"  SCRAPING COMPLETED")
+            print(f"  Successful: {success_count}")
+            print(f"  Failed: {failed_count}")
+            print(f"  Saved to: {scraper.output_dir / section_name}")
+            print(f"{'='*70}\n")
+            
+            log_canonical(logger, "cli_discover_scrape_completed",
+                          url=args.url,
+                          urls_found=len(urls),
+                          success_count=success_count,
+                          failed_count=failed_count)
+            
+            return 0 if failed_count == 0 else 1
+        
+        elif choice == 2:
+            if args.save:
+                output_file = Path(args.save)
+            else:
+                output_file = Path(f"{section_name}_urls.txt")
+            
+            with open(output_file, 'w', encoding='utf-8') as f:
+                for url in urls:
+                    f.write(f"{url}\n")
+            
+            print(f"\n✓ URLs saved to: {output_file}")
+            log_canonical(logger, "cli_discover_saved", url=args.url, urls_found=len(urls), file=str(output_file))
+            return 0
+        
+        else:
+            print("\nNo action taken. Exiting.")
+            log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=len(urls))
+            return 0
+    
+    else:
+        if args.save:
+            output_file = Path(args.save)
+            with open(output_file, 'w', encoding='utf-8') as f:
+                for url in urls:
+                    f.write(f"{url}\n")
+            print(f"\nURLs saved to: {output_file}")
+        
+        log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=len(urls))
+        return 0
 
 
 def main():
@@ -164,8 +265,11 @@ Examples:
   Scrape URLs from a file:
     %(prog)s scrape-list urls.txt --output recipes
   
-  Discover URLs without scraping:
-    %(prog)s discover https://www.cocinadominicana.com/inicia --save discovered_urls.txt
+  Discover URLs with interactive menu:
+    %(prog)s discover https://www.cocinadominicana.com/cocina
+  
+  Discover URLs and save to file (non-interactive):
+    %(prog)s discover https://www.cocinadominicana.com/inicia --save urls.txt --no-interactive
   
   Scrape all configured sections:
     %(prog)s scrape-all
@@ -232,17 +336,29 @@ Examples:
     
     discover_parser = subparsers.add_parser(
         'discover',
-        help='Discover URLs from a page without scraping'
+        help='Discover URLs from a page with interactive menu'
     )
     discover_parser.add_argument('url', help='URL to discover links from')
     discover_parser.add_argument(
         '--save',
-        help='Save discovered URLs to file'
+        help='Save discovered URLs to file (default: <section>_urls.txt if interactive choice 2)'
     )
     discover_parser.add_argument(
         '--no-filter',
         action='store_true',
         help='Disable config-based URL filtering'
+    )
+    discover_parser.add_argument(
+        '--interactive',
+        action='store_true',
+        default=True,
+        help='Enable interactive menu (default: True)'
+    )
+    discover_parser.add_argument(
+        '--no-interactive',
+        dest='interactive',
+        action='store_false',
+        help='Disable interactive menu for scripting'
     )
     discover_parser.set_defaults(func=discover_urls)
     
