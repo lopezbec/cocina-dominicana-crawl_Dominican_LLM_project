@@ -1,6 +1,7 @@
 .PHONY: help setup install firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
         firecrawl-restart firecrawl-status firecrawl-logs firecrawl-clean \
-        scrape test clean clean-all check-docker check-python
+        scrape scrape-url scrape-category scrape-list scrape-discover test clean clean-all \
+        check-docker check-python
 
 .DEFAULT_GOAL := help
 
@@ -42,12 +43,16 @@ help:
 	@echo "    make firecrawl-status   Show service status"
 	@echo "    make firecrawl-logs     Follow API logs"
 	@echo ""
-	@echo "  DEVELOPMENT"
+	@echo "  SCRAPING COMMANDS"
 	@echo "  ──────────────────────────────────────────────────────────────────────"
-	@echo "    make scrape             Run the scraper"
-	@echo "    make test               Test Firecrawl endpoint"
-	@echo "    make clean              Remove scraped content and logs"
-	@echo "    make clean-all          Remove all generated files including Firecrawl"
+	@echo "    make scrape                    Run all configured sections"
+	@echo "    make scrape-url URL=<url>      Scrape a single URL"
+	@echo "    make scrape-category URL=<url> Crawl category and scrape articles"
+	@echo "    make scrape-list FILE=<file>   Scrape URLs from file"
+	@echo "    make scrape-discover URL=<url> Discover URLs without scraping"
+	@echo "    make test                      Test Firecrawl endpoint"
+	@echo "    make clean                     Remove scraped content and logs"
+	@echo "    make clean-all                 Remove all generated files including Firecrawl"
 	@echo ""
 	@echo "  CHECKS"
 	@echo "  ──────────────────────────────────────────────────────────────────────"
@@ -173,6 +178,50 @@ scrape: check-python
 	fi
 	@echo "Starting scraper..."
 	@$(PYTHON) scraper.py
+
+scrape-url: check-python
+	@if [ -z "$(URL)" ]; then \
+		echo "Error: URL parameter required"; \
+		echo "Usage: make scrape-url URL=https://www.cocinadominicana.com/batata-asada"; \
+		exit 1; \
+	fi
+	@echo "Scraping single URL: $(URL)"
+	@$(PYTHON) cli.py scrape "$(URL)"
+
+scrape-category: check-python
+	@if [ -z "$(URL)" ]; then \
+		echo "Error: URL parameter required"; \
+		echo "Usage: make scrape-category URL=https://www.cocinadominicana.com/cocina DEPTH=2"; \
+		exit 1; \
+	fi
+	@echo "Crawling category: $(URL)"
+	@if [ -n "$(DEPTH)" ]; then \
+		$(PYTHON) cli.py crawl "$(URL)" --depth $(DEPTH); \
+	else \
+		$(PYTHON) cli.py crawl "$(URL)"; \
+	fi
+
+scrape-list: check-python
+	@if [ -z "$(FILE)" ]; then \
+		echo "Error: FILE parameter required"; \
+		echo "Usage: make scrape-list FILE=urls.txt"; \
+		exit 1; \
+	fi
+	@if [ ! -f "$(FILE)" ]; then \
+		echo "Error: File not found: $(FILE)"; \
+		exit 1; \
+	fi
+	@echo "Scraping URLs from file: $(FILE)"
+	@$(PYTHON) cli.py scrape-list "$(FILE)"
+
+scrape-discover: check-python
+	@if [ -z "$(URL)" ]; then \
+		echo "Error: URL parameter required"; \
+		echo "Usage: make scrape-discover URL=https://www.cocinadominicana.com/inicia"; \
+		exit 1; \
+	fi
+	@echo "Discovering URLs from: $(URL)"
+	@$(PYTHON) cli.py discover "$(URL)"
 
 test:
 	@echo ""

@@ -1,0 +1,52 @@
+base_url: "https://www.cocinadominicana.com"
+output_dir: "scraped_content"
+
+filters:
+  include_patterns:
+    - "cocinadominicana\\.com/.*"
+  
+  exclude_patterns:
+    - "wp-content"
+    - "wp-json"
+    - "xmlrpc"
+    - "feed"
+    - "comments"
+    - "\\.(jpg|jpeg|png|gif|svg|webp|ico)$"
+    - "suscribete"
+    - "subscribe"
+    - "contactanos"
+    - "contact"
+    - "facebook\\.com"
+    - "instagram\\.com"
+    - "youtube\\.com"
+    - "pinterest\\.com"
+    - "twitter\\.com"
+    - "dominicancooking\\.com"
+
+crawler:
+  max_depth: 2
+  delay_seconds: 0.5
+  skip_existing: true
+  max_retries: 3
+  base_retry_delay: 2
+
+sections:
+  cultura_origenes:
+    name: "Cultura y Orígenes"
+    url: "https://www.cocinadominicana.com/cultura/herencia"
+    directory: "cultura_origenes"
+  
+  tradiciones_costumbres:
+    name: "Tradiciones y Costumbres"
+    url: "https://www.cocinadominicana.com/cultura/tradiciones-costumbres"
+    directory: "tradiciones_costumbres"
+  
+  festividades_celebraciones:
+    name: "Festividades y Celebraciones"
+    url: "https://www.cocinadominicana.com/cultura/celebraciones"
+    directory: "festividades_celebraciones"
+  
+  comparaciones:
+    name: "Comparaciones"
+    url: "https://www.cocinadominicana.com/cultura/versus"
+    directory: "comparaciones"

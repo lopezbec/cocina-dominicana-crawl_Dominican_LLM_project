@@ -1,92 +1,101 @@
 """
 Dominican Culture Scraper using Firecrawl
-Includes rate-limiting and retry logic
+Supports section-based scraping, category crawling, and single URL scraping
 """
 
 from firecrawl import Firecrawl
 import os
 import re
-import json
 import time
+import yaml
 from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Set
+from urllib.parse import urlparse
 from dotenv import load_dotenv
-from utils import setup_canonical_logger, log_canonical, PerformanceTimer, create_safe_filename, save_json_file
+from utils import (
+    setup_canonical_logger,
+    log_canonical,
+    PerformanceTimer,
+    create_safe_filename,
+    save_json_file,
+)
 
 load_dotenv()
 
 
 class Scraper:
-    def __init__(self):
+    def __init__(self, config_path: str = "config.yaml"):
         self.logger = setup_canonical_logger(__name__)
         self.api_url = os.getenv("FIRECRAWL_API_URL", "http://localhost:3002")
         self.firecrawl = Firecrawl(api_url=self.api_url)
-        log_canonical(self.logger, "firecrawl_initialized", api_url=self.api_url)
-        self.base_url = "https://www.cocinadominicana.com"
-        self._initialize_sections()
+        log_canonical(self.logger, "firecrawl_initialized",
+                      api_url=self.api_url)
+
+        self.config = self._load_config(config_path)
+        self.base_url = self.config.get(
+            "base_url", "https://www.cocinadominicana.com")
+        self.sections = self.config.get("sections", {})
         self._create_output_directories()
 
-    def _initialize_sections(self):
-        """Initialize scraping sections configuration."""
-        self.sections = {
-            "cultura_origenes": {
-                "name": "Cultura y Orígenes",
-                "url": f"{self.base_url}/cultura/herencia",
-                "directory": "cultura_origenes"
-            },
-            "tradiciones_costumbres": {
-                "name": "Tradiciones y Costumbres",
-                "url": f"{self.base_url}/cultura/tradiciones-costumbres",
-                "directory": "tradiciones_costumbres"
-            },
-            "festividades_celebraciones": {
-                "name": "Festividades y Celebraciones",
-                "url": f"{self.base_url}/cultura/celebraciones",
-                "directory": "festividades_celebraciones"
-            },
-            "comparaciones": {
-                "name": "Comparaciones",
-                "url": f"{self.base_url}/cultura/versus",
-                "directory": "comparaciones"
-            }
-        }
+    def _load_config(self, config_path: str) -> Dict[str, Any]:
+        config_file = Path(config_path)
+        if config_file.exists():
+            with open(config_file, "r", encoding="utf-8") as f:
+                return yaml.safe_load(f)
+        return {}
 
     def _create_output_directories(self):
-        """Create output directory structure."""
-        self.output_dir = Path("scraped_content")
+        output_dir_name = self.config.get("output_dir", "scraped_content")
+        self.output_dir = Path(output_dir_name)
         self.output_dir.mkdir(exist_ok=True)
 
         for section_info in self.sections.values():
             section_dir = self.output_dir / section_info["directory"]
             section_dir.mkdir(exist_ok=True)
 
-    def scrape_with_retry(self, url: str, max_retries: int = 3, base_delay: int = 2) -> Optional[object]:
+    def scrape_with_retry(
+        self, url: str, max_retries: int = 3, base_delay: int = 2
+    ) -> Optional[object]:
         with PerformanceTimer() as timer:
             for attempt in range(max_retries):
                 try:
                     doc = self.firecrawl.scrape(url, formats=["markdown"])
-                    log_canonical(self.logger, "scrape_success",
-                                  url=url, attempt=attempt + 1, duration_ms=timer.duration_ms)
+                    log_canonical(
+                        self.logger,
+                        "scrape_success",
+                        url=url,
+                        attempt=attempt + 1,
+                        duration_ms=timer.duration_ms,
+                    )
                     return doc
 
                 except Exception as e:
                     error_msg = str(e)
-                    log_canonical(self.logger, "scrape_error",
-                                  url=url, attempt=attempt + 1, error=error_msg)
+                    log_canonical(
+                        self.logger,
+                        "scrape_error",
+                        url=url,
+                        attempt=attempt + 1,
+                        error=error_msg,
+                    )
 
                     if attempt < max_retries - 1:
                         time.sleep(base_delay)
 
-            log_canonical(self.logger, "scrape_failed",
-                          url=url, max_retries=max_retries, duration_ms=timer.duration_ms)
+            log_canonical(
+                self.logger,
+                "scrape_failed",
+                url=url,
+                max_retries=max_retries,
+                duration_ms=timer.duration_ms,
+            )
             return None
 
-    def _extract_urls_from_markdown(self, markdown_content: str) -> set:
-        """Extract URLs from markdown content using regex patterns."""
+    def _extract_urls_from_markdown(self, markdown_content: str) -> Set[str]:
         patterns = [
-            r'\](https://www\.cocinadominicana\.com/([^)]+))\)',
-            r'\((https://www\.cocinadominicana\.com/([^)]+))\)',
+            r"\](https://www\.cocinadominicana\.com/([^)]+))\)",
+            r"\((https://www\.cocinadominicana\.com/([^)]+))\)",
         ]
 
         all_urls = set()
@@ -94,94 +103,187 @@ class Scraper:
             matches = re.findall(pattern, markdown_content)
             for match in matches:
                 if isinstance(match, tuple):
-                    url = match[0] if match[0].startswith('http') else f"{self.base_url}/{match[0]}"
+                    url = (
+                        match[0]
+                        if match[0].startswith("http")
+                        else f"{self.base_url}/{match[0]}"
+                    )
                 else:
-                    url = match if match.startswith('http') else f"{self.base_url}/{match}"
+                    url = (
+                        match
+                        if match.startswith("http")
+                        else f"{self.base_url}/{match}"
+                    )
                 all_urls.add(url)
 
         return all_urls
 
-    def _filter_valid_article_urls(self, urls: set, section_url: str) -> List[str]:
-        """Filter URLs to get only valid article URLs."""
+    def _matches_pattern(self, url: str, patterns: List[str]) -> bool:
+        for pattern in patterns:
+            if re.search(pattern, url):
+                return True
+        return False
+
+    def _filter_urls_by_config(self, urls: Set[str]) -> List[str]:
+        filters = self.config.get("filters", {})
+        include_patterns = filters.get("include_patterns", [])
+        exclude_patterns = filters.get("exclude_patterns", [])
+
+        valid_urls = []
+        for url in urls:
+            if exclude_patterns and self._matches_pattern(url, exclude_patterns):
+                continue
+
+            if include_patterns and not self._matches_pattern(url, include_patterns):
+                continue
+
+            valid_urls.append(url)
+
+        return sorted(valid_urls)
+
+    def _filter_valid_article_urls(self, urls: Set[str], section_url: str) -> List[str]:
         excluded_paths = [
-            'cultura/herencia', 'cultura/tradiciones-costumbres',
-            'cultura/celebraciones', 'cultura/versus'
+            "cultura/herencia",
+            "cultura/tradiciones-costumbres",
+            "cultura/celebraciones",
+            "cultura/versus",
         ]
 
         valid_urls = []
         for url in urls:
-            url_path = url.replace(self.base_url + '/', '')
+            url_path = url.replace(self.base_url + "/", "")
 
-            if (not url.endswith(('.jpg', '.png', '.gif', '.jpeg')) and
-                    '/cultura/' not in url and
-                    '#' not in url and
-                    'dominicancooking.com' not in url and
-                    'wp-content' not in url and
-                    url_path and
-                    url_path not in excluded_paths and
-                    url != section_url):
+            if (
+                not url.endswith((".jpg", ".png", ".gif", ".jpeg"))
+                and "/cultura/" not in url
+                and "#" not in url
+                and "dominicancooking.com" not in url
+                and "wp-content" not in url
+                and url_path
+                and url_path not in excluded_paths
+                and url != section_url
+            ):
                 valid_urls.append(url)
 
         return sorted(valid_urls)
 
     def discover_article_urls(self, section_url: str) -> List[str]:
-        """Extract all article URLs from a section page."""
         with PerformanceTimer() as timer:
-            log_canonical(self.logger, "url_discovery_started", section_url=section_url)
+            log_canonical(self.logger, "url_discovery_started",
+                          section_url=section_url)
 
             doc = self.scrape_with_retry(section_url)
             if not doc:
-                log_canonical(self.logger, "url_discovery_failed",
-                              section_url=section_url, reason="scrape_failed")
+                log_canonical(
+                    self.logger,
+                    "url_discovery_failed",
+                    section_url=section_url,
+                    reason="scrape_failed",
+                )
                 return []
 
-            if not hasattr(doc, 'markdown') or not getattr(doc, 'markdown', None):
-                log_canonical(self.logger, "url_discovery_failed",
-                              section_url=section_url, reason="no_markdown")
+            if not hasattr(doc, "markdown") or not getattr(doc, "markdown", None):
+                log_canonical(
+                    self.logger,
+                    "url_discovery_failed",
+                    section_url=section_url,
+                    reason="no_markdown",
+                )
                 return []
 
-            markdown_content = getattr(doc, 'markdown')
+            markdown_content = getattr(doc, "markdown")
             all_urls = self._extract_urls_from_markdown(markdown_content)
-            article_urls = self._filter_valid_article_urls(all_urls, section_url)
+            article_urls = self._filter_valid_article_urls(
+                all_urls, section_url)
 
-            log_canonical(self.logger, "url_discovery_completed",
-                          section_url=section_url, urls_found=len(article_urls),
-                          duration_ms=timer.duration_ms)
+            log_canonical(
+                self.logger,
+                "url_discovery_completed",
+                section_url=section_url,
+                urls_found=len(article_urls),
+                duration_ms=timer.duration_ms,
+            )
             return article_urls
 
+    def auto_discover_urls(
+        self, page_url: str, use_config_filters: bool = True
+    ) -> List[str]:
+        with PerformanceTimer() as timer:
+            log_canonical(self.logger, "auto_discovery_started",
+                          page_url=page_url)
+
+            doc = self.scrape_with_retry(page_url)
+            if not doc:
+                log_canonical(
+                    self.logger,
+                    "auto_discovery_failed",
+                    page_url=page_url,
+                    reason="scrape_failed",
+                )
+                return []
+
+            if not hasattr(doc, "markdown") or not getattr(doc, "markdown", None):
+                log_canonical(
+                    self.logger,
+                    "auto_discovery_failed",
+                    page_url=page_url,
+                    reason="no_markdown",
+                )
+                return []
+
+            markdown_content = getattr(doc, "markdown")
+            all_urls = self._extract_urls_from_markdown(markdown_content)
+
+            if use_config_filters:
+                discovered_urls = self._filter_urls_by_config(all_urls)
+            else:
+                discovered_urls = sorted(all_urls)
+
+            log_canonical(
+                self.logger,
+                "auto_discovery_completed",
+                page_url=page_url,
+                urls_found=len(discovered_urls),
+                duration_ms=timer.duration_ms,
+            )
+            return discovered_urls
+
     def _extract_article_metadata(self, doc) -> Dict[str, str]:
-        """Extract metadata from scraped document."""
         title = "Unknown Title"
         description = ""
 
-        if hasattr(doc, 'metadata'):
-            metadata = getattr(doc, 'metadata')
+        if hasattr(doc, "metadata"):
+            metadata = getattr(doc, "metadata")
             if metadata:
-                title = getattr(metadata, 'title', 'Unknown Title')
-                description = getattr(metadata, 'description', '')
+                title = getattr(metadata, "title", "Unknown Title")
+                description = getattr(metadata, "description", "")
 
         return {"title": title, "description": description}
 
     def scrape_article(self, url: str) -> Optional[Dict]:
-        """Scrape an individual article."""
         with PerformanceTimer() as timer:
             log_canonical(self.logger, "article_scrape_started", url=url)
 
             doc = self.scrape_with_retry(url)
             if not doc:
-                log_canonical(self.logger, "article_scrape_failed",
-                              url=url, reason="scrape_failed")
+                log_canonical(
+                    self.logger,
+                    "article_scrape_failed",
+                    url=url,
+                    reason="scrape_failed",
+                )
                 return None
 
-            if not hasattr(doc, 'markdown') or not getattr(doc, 'markdown', None):
-                log_canonical(self.logger, "article_scrape_failed",
-                              url=url, reason="no_content")
+            if not hasattr(doc, "markdown") or not getattr(doc, "markdown", None):
+                log_canonical(
+                    self.logger, "article_scrape_failed", url=url, reason="no_content"
+                )
                 return None
 
-            markdown_content = getattr(doc, 'markdown')
+            markdown_content = getattr(doc, "markdown")
             metadata = self._extract_article_metadata(doc)
 
-            url_slug = url.replace(self.base_url + '/', '').replace('/', '_')
+            url_slug = url.replace(self.base_url + "/", "").replace("/", "_")
             word_count = len(markdown_content.split())
             char_count = len(markdown_content)
 
@@ -193,148 +295,302 @@ class Scraper:
                 "scraped_at": datetime.now().isoformat(),
                 "word_count": word_count,
                 "char_count": char_count,
-                "content": markdown_content
+                "content": markdown_content,
             }
 
-            log_canonical(self.logger, "article_scrape_completed",
-                          url=url, title=metadata["title"], word_count=word_count,
-                          duration_ms=timer.duration_ms)
+            log_canonical(
+                self.logger,
+                "article_scrape_completed",
+                url=url,
+                title=metadata["title"],
+                word_count=word_count,
+                duration_ms=timer.duration_ms,
+            )
             return article_data
 
     def save_article(self, article_data: Dict, section_directory: str):
-        """Save article to file."""
         if not article_data:
             return
 
         with PerformanceTimer() as timer:
             section_dir = self.output_dir / section_directory
-            safe_filename = create_safe_filename(article_data['url_slug'])
+            section_dir.mkdir(exist_ok=True, parents=True)
+
+            safe_filename = create_safe_filename(article_data["url_slug"])
 
             content_file = section_dir / f"{safe_filename}.md"
-            with open(content_file, 'w', encoding='utf-8') as f:
+            with open(content_file, "w", encoding="utf-8") as f:
                 f.write("---\n")
-                f.write(f"title: \"{article_data['title']}\"\n")
-                if article_data['description']:
-                    f.write(f"description: \"{article_data['description']}\"\n")
+                f.write(f'title: "{article_data["title"]}"\n')
+                if article_data["description"]:
+                    f.write(f'description: "{article_data["description"]}"\n')
                 f.write(f"url: {article_data['url']}\n")
                 f.write(f"scraped_at: {article_data['scraped_at']}\n")
                 f.write(f"word_count: {article_data['word_count']}\n")
                 f.write(f"char_count: {article_data['char_count']}\n")
                 f.write("---\n\n")
-                f.write(article_data['content'])
+                f.write(article_data["content"])
 
             metadata_file = section_dir / f"{safe_filename}.json"
-            metadata = {k: v for k, v in article_data.items() if k != 'content'}
+            metadata = {k: v for k, v in article_data.items() if k !=
+                        "content"}
             save_json_file(metadata, metadata_file)
 
-            log_canonical(self.logger, "article_save_completed",
-                          filename=content_file.name, duration_ms=timer.duration_ms)
+            log_canonical(
+                self.logger,
+                "article_save_completed",
+                file_name=content_file.name,
+                duration_ms=timer.duration_ms,
+            )
 
-    def _check_existing_file(self, url: str, section_info: Dict) -> bool:
-        """Check if an article file already exists."""
-        url_slug = url.replace(self.base_url + '/', '').replace('/', '_')
+    def _check_existing_file(self, url: str, section_directory: str) -> bool:
+        url_slug = url.replace(self.base_url + "/", "").replace("/", "_")
         safe_filename = create_safe_filename(url_slug)
-        section_dir = self.output_dir / section_info['directory']
+        section_dir = self.output_dir / section_directory
         content_file = section_dir / f"{safe_filename}.md"
         return content_file.exists()
 
-    def _process_article_batch(self, article_urls: List[str], section_info: Dict) -> Dict[str, int]:
-        """Process a batch of articles for a section."""
+    def _process_article_batch(
+        self,
+        article_urls: List[str],
+        section_directory: str,
+        skip_existing: bool = True,
+    ) -> Dict[str, int]:
         scraped_count = 0
         failed_count = 0
         skipped_count = 0
 
+        crawler_config = self.config.get("crawler", {})
+        delay = crawler_config.get("delay_seconds", 0.5)
+
         for i, url in enumerate(article_urls, 1):
-            if self._check_existing_file(url, section_info):
-                log_canonical(self.logger, "article_skipped",
-                              url=url, reason="already_exists", progress=f"{i}/{len(article_urls)}")
+            if skip_existing and self._check_existing_file(url, section_directory):
+                log_canonical(
+                    self.logger,
+                    "article_skipped",
+                    url=url,
+                    reason="already_exists",
+                    progress=f"{i}/{len(article_urls)}",
+                )
                 skipped_count += 1
                 continue
 
             article_data = self.scrape_article(url)
 
             if article_data:
-                self.save_article(article_data, section_info['directory'])
+                self.save_article(article_data, section_directory)
                 scraped_count += 1
             else:
                 failed_count += 1
 
-            time.sleep(0.5)
+            time.sleep(delay)
 
         return {
             "scraped": scraped_count,
             "failed": failed_count,
-            "skipped": skipped_count
+            "skipped": skipped_count,
         }
 
     def scrape_section(self, section_key: str):
-        """Scrape all articles from a section."""
         with PerformanceTimer() as timer:
             section_info = self.sections[section_key]
-            log_canonical(self.logger, "section_processing_started",
-                          section=section_info['name'], section_key=section_key)
+            log_canonical(
+                self.logger,
+                "section_processing_started",
+                section=section_info["name"],
+                section_key=section_key,
+            )
 
-            article_urls = self.discover_article_urls(section_info['url'])
+            article_urls = self.discover_article_urls(section_info["url"])
 
             if not article_urls:
-                log_canonical(self.logger, "section_processing_failed",
-                              section=section_info['name'], reason="no_articles")
+                log_canonical(
+                    self.logger,
+                    "section_processing_failed",
+                    section=section_info["name"],
+                    reason="no_articles",
+                )
                 return
 
-            metrics = self._process_article_batch(article_urls, section_info)
+            metrics = self._process_article_batch(
+                article_urls, section_info["directory"]
+            )
 
-            log_canonical(self.logger, "section_processing_completed",
-                          section=section_info['name'],
-                          articles_scraped=metrics["scraped"],
-                          articles_failed=metrics["failed"],
-                          articles_skipped=metrics["skipped"],
-                          total_articles=len(article_urls),
-                          duration_ms=timer.duration_ms)
+            log_canonical(
+                self.logger,
+                "section_processing_completed",
+                section=section_info["name"],
+                articles_scraped=metrics["scraped"],
+                articles_failed=metrics["failed"],
+                articles_skipped=metrics["skipped"],
+                total_articles=len(article_urls),
+                duration_ms=timer.duration_ms,
+            )
+
+    def scrape_url(self, url: str, output_directory: str = "custom") -> Optional[Dict]:
+        with PerformanceTimer() as timer:
+            log_canonical(self.logger, "single_url_scrape_started", url=url)
+
+            article_data = self.scrape_article(url)
+
+            if article_data:
+                self.save_article(article_data, output_directory)
+                log_canonical(
+                    self.logger,
+                    "single_url_scrape_completed",
+                    url=url,
+                    duration_ms=timer.duration_ms,
+                )
+                return article_data
+            else:
+                log_canonical(
+                    self.logger,
+                    "single_url_scrape_failed",
+                    url=url,
+                    duration_ms=timer.duration_ms,
+                )
+                return None
+
+    def crawl_category(
+        self,
+        category_url: str,
+        category_name: Optional[str] = None,
+        max_depth: int = 1,
+        skip_existing: bool = True,
+    ) -> Dict[str, Any]:
+        with PerformanceTimer() as timer:
+            if not category_name:
+                parsed_url = urlparse(category_url)
+                category_name = (
+                    parsed_url.path.strip("/").replace("/", "_") or "category"
+                )
+
+            safe_category_name = create_safe_filename(category_name)
+
+            log_canonical(
+                self.logger,
+                "category_crawl_started",
+                category_url=category_url,
+                category_name=safe_category_name,
+                max_depth=max_depth,
+            )
+
+            visited_urls = set()
+            all_discovered_urls = []
+
+            discovered_urls = self.auto_discover_urls(
+                category_url, use_config_filters=True
+            )
+            all_discovered_urls.extend(discovered_urls)
+
+            if max_depth > 1:
+                for depth in range(2, max_depth + 1):
+                    new_urls = []
+                    for url in discovered_urls:
+                        if url not in visited_urls:
+                            visited_urls.add(url)
+                            deeper_urls = self.auto_discover_urls(
+                                url, use_config_filters=True
+                            )
+                            new_urls.extend(
+                                [u for u in deeper_urls if u not in visited_urls]
+                            )
+
+                    all_discovered_urls.extend(new_urls)
+                    discovered_urls = new_urls
+
+                    if not new_urls:
+                        break
+
+            unique_urls = list(set(all_discovered_urls))
+
+            log_canonical(
+                self.logger,
+                "category_urls_discovered",
+                category_name=safe_category_name,
+                total_urls=len(unique_urls),
+            )
+
+            metrics = self._process_article_batch(
+                unique_urls, safe_category_name, skip_existing
+            )
+
+            result = {
+                "category_name": safe_category_name,
+                "category_url": category_url,
+                "max_depth": max_depth,
+                "urls_discovered": len(unique_urls),
+                "articles_scraped": metrics["scraped"],
+                "articles_failed": metrics["failed"],
+                "articles_skipped": metrics["skipped"],
+                "duration_ms": timer.duration_ms,
+            }
+
+            summary_file = self.output_dir / safe_category_name / "crawl_summary.json"
+            save_json_file(result, summary_file)
+
+            log_canonical(
+                self.logger,
+                "category_crawl_completed",
+                category_name=safe_category_name,
+                urls_discovered=len(unique_urls),
+                articles_scraped=metrics["scraped"],
+                duration_ms=timer.duration_ms,
+            )
+
+            return result
 
     def _initialize_scraping_session(self) -> Dict[str, Any]:
-        """Initialize the scraping session and return session info."""
         start_time = datetime.now()
         session_info = {
             "start_time": start_time,
             "output_dir": self.output_dir.absolute(),
-            "sections_count": len(self.sections)
+            "sections_count": len(self.sections),
         }
 
-        log_canonical(self.logger, "scrape_session_started",
-                      start_time=start_time.isoformat(),
-                      output_dir=str(session_info["output_dir"]),
-                      sections_count=session_info["sections_count"])
+        log_canonical(
+            self.logger,
+            "scrape_session_started",
+            start_time=start_time.isoformat(),
+            output_dir=str(session_info["output_dir"]),
+            sections_count=session_info["sections_count"],
+        )
 
         return session_info
 
     def _process_all_sections(self) -> Dict[str, int]:
-        """Process all sections and return metrics."""
         total_scraped = 0
         total_failed = 0
 
         for section_key in self.sections:
             try:
                 self.scrape_section(section_key)
-                section_dir = self.output_dir / self.sections[section_key]['directory']
+                section_dir = self.output_dir / \
+                    self.sections[section_key]["directory"]
                 md_files = list(section_dir.glob("*.md"))
                 total_scraped += len(md_files)
 
             except Exception as e:
-                log_canonical(self.logger, "section_error",
-                              section_key=section_key, error=str(e))
+                log_canonical(
+                    self.logger, "section_error", section_key=section_key, error=str(e)
+                )
                 total_failed += 1
 
         return {"total_scraped": total_scraped, "total_failed": total_failed}
 
-    def _finalize_scraping_session(self, session_info: Dict[str, Any], metrics: Dict[str, int]):
-        """Finalize scraping session and create summary."""
+    def _finalize_scraping_session(
+        self, session_info: Dict[str, Any], metrics: Dict[str, int]
+    ):
         end_time = datetime.now()
         duration = end_time - session_info["start_time"]
 
-        log_canonical(self.logger, "scrape_session_completed",
-                      duration_seconds=int(duration.total_seconds()),
-                      total_articles_scraped=metrics["total_scraped"],
-                      total_sections_failed=metrics["total_failed"])
+        log_canonical(
+            self.logger,
+            "scrape_session_completed",
+            duration_seconds=int(duration.total_seconds()),
+            total_articles_scraped=metrics["total_scraped"],
+            total_sections_failed=metrics["total_failed"],
+        )
 
         summary = {
             "scraping_session": {
@@ -342,19 +598,19 @@ class Scraper:
                 "end_time": end_time.isoformat(),
                 "duration_seconds": duration.total_seconds(),
                 "total_articles_scraped": metrics["total_scraped"],
-                "total_sections_failed": metrics["total_failed"]
+                "total_sections_failed": metrics["total_failed"],
             },
-            "sections": {}
+            "sections": {},
         }
 
         for section_key, section_info in self.sections.items():
-            section_dir = self.output_dir / section_info['directory']
+            section_dir = self.output_dir / section_info["directory"]
             md_files = list(section_dir.glob("*.md"))
             summary["sections"][section_key] = {
-                "name": section_info['name'],
-                "url": section_info['url'],
+                "name": section_info["name"],
+                "url": section_info["url"],
                 "articles_scraped": len(md_files),
-                "directory": section_info['directory']
+                "directory": section_info["directory"],
             }
 
         summary_file = self.output_dir / "scraping_summary.json"
@@ -364,7 +620,6 @@ class Scraper:
                       summary_file=str(summary_file))
 
     def scrape_all_sections(self):
-        """Scrape all sections."""
         session_info = self._initialize_scraping_session()
         metrics = self._process_all_sections()
         self._finalize_scraping_session(session_info, metrics)

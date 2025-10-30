@@ -166,7 +166,11 @@ Common commands:
 | `make firecrawl-restart` | Restart all services |
 | `make firecrawl-status` | Show service status |
 | `make firecrawl-logs` | Follow API logs |
-| `make scrape` | Run the scraper |
+| `make scrape` | Run all configured sections |
+| `make scrape-url URL=<url>` | Scrape a single URL |
+| `make scrape-category URL=<url>` | Crawl category and scrape articles |
+| `make scrape-list FILE=<file>` | Scrape URLs from file |
+| `make scrape-discover URL=<url>` | Discover URLs without scraping |
 | `make test` | Test Firecrawl endpoint |
 | `make clean` | Remove scraped content |
 | `make clean-all` | Remove everything including Firecrawl |
@@ -178,6 +182,8 @@ Production-ready scraper with enterprise-grade reliability:
 ### Core Capabilities
 
 - **Local Firecrawl**: No API keys, no rate limits, full control
+- **Flexible Scraping**: Single URL, category crawl, batch processing, or section-based
+- **Smart URL Discovery**: Automatic link extraction with configurable filtering
 - **Canonical Logging**: Structured logging following Stripe's canonical log pattern
 - **Clean Architecture**: Functions follow Single Responsibility Principle with <20 line limit
 - **Fast Scraping**: 6x faster than cloud API (0.5s vs 3s per article)
@@ -186,6 +192,8 @@ Production-ready scraper with enterprise-grade reliability:
 - **Robust Error Handling**: Comprehensive exception handling with detailed logging
 - **File Organization**: Automatic directory structure creation and safe filename generation
 - **Docker-based**: Easy setup with docker-compose, no complex configuration
+- **CLI Interface**: User-friendly command-line interface with multiple commands
+- **Configuration-driven**: YAML-based configuration for easy customization
 
 ### Content Categories
 
@@ -230,11 +238,67 @@ erDiagram
 
 ## Usage
 
-### Basic Usage
+### Command-Line Interface
+
+The scraper provides a flexible CLI for different scraping scenarios:
+
+#### Scrape All Configured Sections
 
 ```bash
+make scrape
 python scraper.py
+python cli.py scrape-all
 ```
+
+#### Scrape Single URL
+
+```bash
+make scrape-url URL="https://www.cocinadominicana.com/batata-asada"
+python cli.py scrape "https://www.cocinadominicana.com/batata-asada"
+python cli.py scrape "https://www.cocinadominicana.com/batata-asada" --output recipes
+```
+
+#### Crawl Category Page
+
+Automatically discover and scrape all articles from a category page:
+
+```bash
+make scrape-category URL="https://www.cocinadominicana.com/cocina" DEPTH=2
+python cli.py crawl "https://www.cocinadominicana.com/cocina"
+python cli.py crawl "https://www.cocinadominicana.com/cocina" --depth 2 --name cocina
+```
+
+#### Scrape Multiple URLs from File
+
+Create a file with URLs (one per line):
+
+```bash
+echo "https://www.cocinadominicana.com/batata-asada" > urls.txt
+echo "https://www.cocinadominicana.com/mangu" >> urls.txt
+
+make scrape-list FILE=urls.txt
+python cli.py scrape-list urls.txt --output batch
+```
+
+#### Discover URLs Without Scraping
+
+Preview what URLs would be scraped from a page:
+
+```bash
+make scrape-discover URL="https://www.cocinadominicana.com/inicia"
+python cli.py discover "https://www.cocinadominicana.com/inicia"
+python cli.py discover "https://www.cocinadominicana.com/inicia" --save discovered.txt
+```
+
+### CLI Commands Reference
+
+| Command | Description | Example |
+|---------|-------------|---------|
+| `scrape-all` | Scrape all configured sections | `python cli.py scrape-all` |
+| `scrape <url>` | Scrape single URL | `python cli.py scrape <url>` |
+| `crawl <url>` | Crawl category and scrape articles | `python cli.py crawl <url> --depth 2` |
+| `scrape-list <file>` | Scrape URLs from file | `python cli.py scrape-list urls.txt` |
+| `discover <url>` | Discover URLs without scraping | `python cli.py discover <url>` |
 
 ### Programmatic Usage
 
@@ -247,19 +311,36 @@ scraper.scrape_all_sections()
 
 scraper.scrape_section("cultura_origenes")
 
-article_data = scraper.scrape_article("https://www.cocinadominicana.com/article-url")
+article_data = scraper.scrape_url("https://www.cocinadominicana.com/article-url")
+
+result = scraper.crawl_category(
+    category_url="https://www.cocinadominicana.com/cocina",
+    category_name="cocina",
+    max_depth=2
+)
+
+urls = scraper.auto_discover_urls("https://www.cocinadominicana.com/inicia")
 ```
 
-### Advanced Configuration
+### Configuration
 
-```python
-from scraper import Scraper
-from utils import setup_canonical_logger
+Edit `config.yaml` to customize scraping behavior:
 
-logger = setup_canonical_logger(__name__, level="DEBUG")
+```yaml
+base_url: "https://www.cocinadominicana.com"
+output_dir: "scraped_content"
 
-scraper = Scraper()
-scraper.scrape_all_sections()
+filters:
+  include_patterns:
+    - "cocinadominicana\\.com/.*"
+  exclude_patterns:
+    - "wp-content"
+    - "\\.(jpg|png|gif)$"
+
+crawler:
+  max_depth: 2
+  delay_seconds: 0.5
+  skip_existing: true
 ```
 
 ## Output Structure
@@ -273,6 +354,11 @@ scraped_content/
 ├── tradiciones_costumbres/
 ├── festividades_celebraciones/
 ├── comparaciones/
+├── cocina/
+│   ├── crawl_summary.json
+│   └── ...
+├── custom/
+├── batch/
 └── scraping_summary.json
 ```
 
