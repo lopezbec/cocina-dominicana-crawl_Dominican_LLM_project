@@ -26,7 +26,7 @@ def scrape_single_url(args):
         print(f"\nSuccessfully scraped: {args.url}")
         print(f"Title: {result['title']}")
         print(f"Word count: {result['word_count']}")
-        print(f"Saved to: {scraper.output_dir / output_dir}")
+        print(f"Saved to: {scraper.output_dir}")
         log_canonical(logger, "cli_scrape_url_success", url=args.url)
         return 0
     else:
@@ -54,7 +54,7 @@ def crawl_category(args):
     print(f"Articles skipped: {result['articles_skipped']}")
     print(f"Articles failed: {result['articles_failed']}")
     print(f"Duration: {result['duration_ms'] / 1000:.2f}s")
-    print(f"Saved to: {scraper.output_dir / result['category_name']}")
+    print(f"Saved to: {scraper.output_dir}")
     
     log_canonical(logger, "cli_crawl_completed", 
                   category=result['category_name'],
@@ -103,7 +103,7 @@ def scrape_list(args):
     print(f"\n\nBatch scraping completed:")
     print(f"  Successful: {success_count}")
     print(f"  Failed: {failed_count}")
-    print(f"  Saved to: {scraper.output_dir / output_dir}")
+    print(f"  Saved to: {scraper.output_dir}")
     
     log_canonical(logger, "cli_scrape_list_completed",
                   total_urls=len(urls),
@@ -144,7 +144,7 @@ def display_interactive_menu(urls: List[str], source_url: str, section_name: str
     print(f"{'='*70}\n")
     
     print("What would you like to do?\n")
-    print(f"  [1] Scrape all URLs now (save to: scraped_content/{section_name})")
+    print(f"  [1] Scrape all URLs now (save to: scraped_content/)")
     print(f"  [2] Save URLs to file")
     print(f"  [3] Nothing (exit)")
     print()
@@ -187,7 +187,7 @@ def discover_urls(args):
         if choice == 1:
             print(f"\n{'='*70}")
             print(f"  SCRAPING {len(urls)} URLs")
-            print(f"  Output directory: scraped_content/{section_name}")
+            print(f"  Output directory: scraped_content/")
             print(f"{'='*70}\n")
             
             success_count = 0
@@ -208,7 +208,7 @@ def discover_urls(args):
             print(f"  SCRAPING COMPLETED")
             print(f"  Successful: {success_count}")
             print(f"  Failed: {failed_count}")
-            print(f"  Saved to: {scraper.output_dir / section_name}")
+            print(f"  Saved to: {scraper.output_dir}")
             print(f"{'='*70}\n")
             
             log_canonical(logger, "cli_discover_scrape_completed",

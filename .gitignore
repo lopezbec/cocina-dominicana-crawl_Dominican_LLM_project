@@ -41,7 +41,7 @@ venv.bak/
 topics/
 *.log
 progress.json
-scraped_content/
+scraped*/
 
 # IDE
 .vscode/

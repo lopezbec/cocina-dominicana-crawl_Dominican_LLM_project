@@ -1,6 +1,6 @@
 .PHONY: help setup install firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
         firecrawl-restart firecrawl-status firecrawl-logs firecrawl-clean \
-        scrape scrape-url scrape-category scrape-list scrape-discover test clean clean-all \
+        scrape scrape-url scrape-category scrape-list scrape-discover process test clean clean-all \
         check-docker check-python
 
 .DEFAULT_GOAL := help
@@ -51,6 +51,10 @@ help:
 	@echo "    make scrape-list FILE=<file>   Scrape URLs from file"
 	@echo "    make scrape-discover URL=<url> Discover URLs with interactive menu"
 	@echo "    make test                      Test Firecrawl endpoint"
+	@echo ""
+	@echo "  PROCESSING COMMANDS"
+	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "    make process                   Process markdown to plain text"
 	@echo "    make clean                     Remove scraped content and logs"
 	@echo "    make clean-all                 Remove all generated files including Firecrawl"
 	@echo ""
@@ -232,6 +236,24 @@ scrape-discover: check-python
 		$(PYTHON) cli.py discover "$(URL)"; \
 	fi
 
+process: check-python
+	@if [ ! -f process_to_plaintext.py ]; then \
+		echo "Error: process_to_plaintext.py not found"; \
+		exit 1; \
+	fi
+	@if [ ! -d scraped_content ]; then \
+		echo "Error: scraped_content directory not found. Run 'make scrape' first."; \
+		exit 1; \
+	fi
+	@echo ""
+	@echo "  Processing markdown to plain text..."
+	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo ""
+	@$(PYTHON) process_to_plaintext.py
+	@echo ""
+	@echo "  ✓ Processing complete"
+	@echo ""
+
 test:
 	@echo ""
 	@echo "  Testing Firecrawl endpoint..."
@@ -246,6 +268,7 @@ test:
 clean:
 	@echo "Cleaning scraped content and logs..."
 	@rm -rf scraped_content/
+	@rm -rf scrapped_plain_text/
 	@rm -f *.log
 	@rm -f progress.json
 	@echo "Clean complete."

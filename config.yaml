@@ -4,7 +4,7 @@ output_dir: "scraped_content"
 filters:
   include_patterns:
     - "cocinadominicana\\.com/.*"
-  
+
   exclude_patterns:
     - "wp-content"
     - "wp-json"
@@ -22,6 +22,7 @@ filters:
     - "pinterest\\.com"
     - "twitter\\.com"
     - "dominicancooking\\.com"
+    - "#"
 
 crawler:
   max_depth: 2
@@ -34,19 +35,31 @@ sections:
   cultura_origenes:
     name: "Cultura y Orígenes"
     url: "https://www.cocinadominicana.com/cultura/herencia"
-    directory: "cultura_origenes"
-  
+
   tradiciones_costumbres:
     name: "Tradiciones y Costumbres"
     url: "https://www.cocinadominicana.com/cultura/tradiciones-costumbres"
-    directory: "tradiciones_costumbres"
-  
+
   festividades_celebraciones:
     name: "Festividades y Celebraciones"
     url: "https://www.cocinadominicana.com/cultura/celebraciones"
-    directory: "festividades_celebraciones"
-  
+
   comparaciones:
     name: "Comparaciones"
     url: "https://www.cocinadominicana.com/cultura/versus"
-    directory: "comparaciones"
+
+  cocina_basicos:
+    name: "Cocina Básica"
+    url: "https://www.cocinadominicana.com/cocinar/basicos"
+
+  cocina_ingredientes:
+    name: "Guía de Ingredientes"
+    url: "https://www.cocinadominicana.com/cocinar/ingredientes"
+
+  cocina_como_hacer:
+    name: "Cómo Hacer"
+    url: "https://www.cocinadominicana.com/cocinar/como-hacer"
+
+  cocina_ideas:
+    name: "Ideas de Cocina"
+    url: "https://www.cocinadominicana.com/cocinar/ideas"

@@ -8,6 +8,7 @@ import os
 import re
 import time
 import yaml
+import json
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Optional, Any, Set
@@ -49,10 +50,6 @@ class Scraper:
         output_dir_name = self.config.get("output_dir", "scraped_content")
         self.output_dir = Path(output_dir_name)
         self.output_dir.mkdir(exist_ok=True)
-
-        for section_info in self.sections.values():
-            section_dir = self.output_dir / section_info["directory"]
-            section_dir.mkdir(exist_ok=True)
 
     def scrape_with_retry(
         self, url: str, max_retries: int = 3, base_delay: int = 2
@@ -308,22 +305,36 @@ class Scraper:
             )
             return article_data
 
-    def save_article(self, article_data: Dict, section_directory: str):
+    def _get_next_doc_id(self) -> str:
+        metadata_file = self.output_dir / "metadata.jsonl"
+        if not metadata_file.exists():
+            return "0001"
+        
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            if lines:
+                last_meta = json.loads(lines[-1])
+                last_id = int(last_meta['doc_id'])
+                return f"{last_id + 1:04d}"
+        return "0001"
+
+    def save_article(self, article_data: Dict, category: Optional[str] = None):
         if not article_data:
             return
 
         with PerformanceTimer() as timer:
-            section_dir = self.output_dir / section_directory
-            section_dir.mkdir(exist_ok=True, parents=True)
-
+            doc_id = self._get_next_doc_id()
             safe_filename = create_safe_filename(article_data["url_slug"])
 
-            content_file = section_dir / f"{safe_filename}.md"
+            content_file = self.output_dir / f"{doc_id}_{safe_filename}.md"
             with open(content_file, "w", encoding="utf-8") as f:
                 f.write("---\n")
+                f.write(f"doc_id: {doc_id}\n")
                 f.write(f'title: "{article_data["title"]}"\n')
                 if article_data["description"]:
                     f.write(f'description: "{article_data["description"]}"\n')
+                if category:
+                    f.write(f"category: {category}\n")
                 f.write(f"url: {article_data['url']}\n")
                 f.write(f"scraped_at: {article_data['scraped_at']}\n")
                 f.write(f"word_count: {article_data['word_count']}\n")
@@ -331,10 +342,14 @@ class Scraper:
                 f.write("---\n\n")
                 f.write(article_data["content"])
 
-            metadata_file = section_dir / f"{safe_filename}.json"
-            metadata = {k: v for k, v in article_data.items() if k !=
-                        "content"}
-            save_json_file(metadata, metadata_file)
+            metadata = {k: v for k, v in article_data.items() if k != "content"}
+            metadata["doc_id"] = doc_id
+            if category:
+                metadata["category"] = category
+            
+            metadata_file = self.output_dir / "metadata.jsonl"
+            with open(metadata_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(metadata) + '\n')
 
             log_canonical(
                 self.logger,
@@ -343,17 +358,22 @@ class Scraper:
                 duration_ms=timer.duration_ms,
             )
 
-    def _check_existing_file(self, url: str, section_directory: str) -> bool:
-        url_slug = url.replace(self.base_url + "/", "").replace("/", "_")
-        safe_filename = create_safe_filename(url_slug)
-        section_dir = self.output_dir / section_directory
-        content_file = section_dir / f"{safe_filename}.md"
-        return content_file.exists()
+    def _check_existing_file(self, url: str) -> bool:
+        metadata_file = self.output_dir / "metadata.jsonl"
+        if not metadata_file.exists():
+            return False
+        
+        with open(metadata_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                metadata = json.loads(line)
+                if metadata.get('url') == url:
+                    return True
+        return False
 
     def _process_article_batch(
         self,
         article_urls: List[str],
-        section_directory: str,
+        category: Optional[str] = None,
         skip_existing: bool = True,
     ) -> Dict[str, int]:
         scraped_count = 0
@@ -364,7 +384,7 @@ class Scraper:
         delay = crawler_config.get("delay_seconds", 0.5)
 
         for i, url in enumerate(article_urls, 1):
-            if skip_existing and self._check_existing_file(url, section_directory):
+            if skip_existing and self._check_existing_file(url):
                 log_canonical(
                     self.logger,
                     "article_skipped",
@@ -378,7 +398,7 @@ class Scraper:
             article_data = self.scrape_article(url)
 
             if article_data:
-                self.save_article(article_data, section_directory)
+                self.save_article(article_data, category)
                 scraped_count += 1
             else:
                 failed_count += 1
@@ -413,7 +433,7 @@ class Scraper:
                 return
 
             metrics = self._process_article_batch(
-                article_urls, section_info["directory"]
+                article_urls, category=section_info["name"]
             )
 
             log_canonical(
@@ -434,7 +454,7 @@ class Scraper:
             article_data = self.scrape_article(url)
 
             if article_data:
-                self.save_article(article_data, output_directory)
+                self.save_article(article_data, category=None)
                 log_canonical(
                     self.logger,
                     "single_url_scrape_completed",
@@ -512,7 +532,7 @@ class Scraper:
             )
 
             metrics = self._process_article_batch(
-                unique_urls, safe_category_name, skip_existing
+                unique_urls, category=safe_category_name, skip_existing=skip_existing
             )
 
             result = {
@@ -525,9 +545,6 @@ class Scraper:
                 "articles_skipped": metrics["skipped"],
                 "duration_ms": timer.duration_ms,
             }
-
-            summary_file = self.output_dir / safe_category_name / "crawl_summary.json"
-            save_json_file(result, summary_file)
 
             log_canonical(
                 self.logger,
@@ -565,16 +582,17 @@ class Scraper:
         for section_key in self.sections:
             try:
                 self.scrape_section(section_key)
-                section_dir = self.output_dir / \
-                    self.sections[section_key]["directory"]
-                md_files = list(section_dir.glob("*.md"))
-                total_scraped += len(md_files)
 
             except Exception as e:
                 log_canonical(
                     self.logger, "section_error", section_key=section_key, error=str(e)
                 )
                 total_failed += 1
+
+        metadata_file = self.output_dir / "metadata.jsonl"
+        if metadata_file.exists():
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                total_scraped = sum(1 for _ in f)
 
         return {"total_scraped": total_scraped, "total_failed": total_failed}
 
@@ -592,6 +610,18 @@ class Scraper:
             total_sections_failed=metrics["total_failed"],
         )
 
+        category_stats = {}
+        metadata_file = self.output_dir / "metadata.jsonl"
+        
+        if metadata_file.exists():
+            with open(metadata_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    metadata = json.loads(line)
+                    category = metadata.get('category', 'uncategorized')
+                    if category not in category_stats:
+                        category_stats[category] = 0
+                    category_stats[category] += 1
+
         summary = {
             "scraping_session": {
                 "start_time": session_info["start_time"].isoformat(),
@@ -600,20 +630,10 @@ class Scraper:
                 "total_articles_scraped": metrics["total_scraped"],
                 "total_sections_failed": metrics["total_failed"],
             },
-            "sections": {},
+            "categories": category_stats,
         }
 
-        for section_key, section_info in self.sections.items():
-            section_dir = self.output_dir / section_info["directory"]
-            md_files = list(section_dir.glob("*.md"))
-            summary["sections"][section_key] = {
-                "name": section_info["name"],
-                "url": section_info["url"],
-                "articles_scraped": len(md_files),
-                "directory": section_info["directory"],
-            }
-
-        summary_file = self.output_dir / "scraping_summary.json"
+        summary_file = self.output_dir / "corpus_stats.json"
         save_json_file(summary, summary_file)
 
         log_canonical(self.logger, "summary_created",
