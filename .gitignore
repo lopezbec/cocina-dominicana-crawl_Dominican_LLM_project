@@ -42,6 +42,7 @@ topics/
 *.log
 progress.json
 scraped*/
+scrapped*/
 
 # IDE
 .vscode/
