@@ -43,6 +43,7 @@ topics/
 progress.json
 scraped*/
 scrapped*/
+test_output/
 
 # IDE
 .vscode/

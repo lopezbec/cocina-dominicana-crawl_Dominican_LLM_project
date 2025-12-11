@@ -1,0 +1,26 @@
+[project]
+name = "cocina-dominicana-scraper"
+version = "0.1.0"
+description = "Scraper - Production-ready scraper using Firecrawl"
+readme = { file = "readme.markdown", content-type = "text/markdown" }
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [
+    { name = "Cristian de la Hoz" }
+]
+keywords = ["web-scraping", "dominican-republic", "culinary", "firecrawl", "heritage"]
+
+dependencies = [
+    "firecrawl>=4.10.4",
+    "python-dotenv>=1.2.1",
+    "pyyaml>=6.0.3",
+    "wordfreq>=3.1.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"
+Repository = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"
+Issues = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project/issues"
+
+[dependency-groups]
+dev = []

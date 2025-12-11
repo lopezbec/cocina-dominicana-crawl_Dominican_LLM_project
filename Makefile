@@ -1,16 +1,17 @@
-.PHONY: help setup install firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
+.PHONY: help setup install check-uv firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
         firecrawl-restart firecrawl-status firecrawl-logs firecrawl-clean \
         scrape scrape-url scrape-category scrape-list scrape-discover process test clean clean-all \
-        check-docker check-python
+        check-docker check-python uv-add uv-remove uv-sync uv-lock uv-outdated
 
 .DEFAULT_GOAL := help
 
-PYTHON := python3
-PIP := $(PYTHON) -m pip
+PYTHON := uv run python
+UV := uv
 FIRECRAWL_DIR := firecrawl-local
 FIRECRAWL_URL := https://github.com/mendableai/firecrawl.git
 DOCKER_COMPOSE := docker compose
 VENV := .venv
+UV_INSTALL_URL := https://astral.sh/uv/install.sh
 
 help:
 	@echo ""
@@ -29,13 +30,13 @@ help:
 	@echo "  ╚═══════════════════════════════════════════════════════════════════════╝"
 	@echo ""
 	@echo "  SETUP COMMANDS"
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "  ------------------------------------------------------------"
 	@echo "    make setup              Complete first-time setup (install + firecrawl)"
 	@echo "    make install            Install Python dependencies"
 	@echo "    make firecrawl-init     Clone and initialize Firecrawl"
 	@echo ""
 	@echo "  FIRECRAWL MANAGEMENT"
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "  ------------------------------------------------------------"
 	@echo "    make firecrawl-build    Build Docker images (first run: 5-10 min)"
 	@echo "    make firecrawl-start    Start Firecrawl services"
 	@echo "    make firecrawl-stop     Stop Firecrawl services"
@@ -44,7 +45,7 @@ help:
 	@echo "    make firecrawl-logs     Follow API logs"
 	@echo ""
 	@echo "  SCRAPING COMMANDS"
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "  ------------------------------------------------------------"
 	@echo "    make scrape                    Run all configured sections"
 	@echo "    make scrape-url URL=<url>      Scrape a single URL"
 	@echo "    make scrape-category URL=<url> Crawl category and scrape articles"
@@ -53,40 +54,55 @@ help:
 	@echo "    make test                      Test Firecrawl endpoint"
 	@echo ""
 	@echo "  PROCESSING COMMANDS"
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "  ------------------------------------------------------------"
 	@echo "    make process                   Process markdown to plain text"
 	@echo "    make clean                     Remove scraped content and logs"
 	@echo "    make clean-all                 Remove all generated files including Firecrawl"
 	@echo ""
 	@echo "  CHECKS"
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "  ------------------------------------------------------------"
 	@echo "    make check-docker       Verify Docker is installed and running"
 	@echo "    make check-python       Verify Python installation"
+	@echo "    make check-uv           Verify UV installation (auto-install on macOS/Linux)"
+	@echo ""
+	@echo "  UV PACKAGE MANAGEMENT"
+	@echo "  ------------------------------------------------------------"
+	@echo "    make uv-add PKG=<name>      Add a package"
+	@echo "    make uv-remove PKG=<name>   Remove a package"
+	@echo "    make uv-sync                Sync dependencies from pyproject.toml"
+	@echo "    make uv-lock                Update lockfile"
+	@echo "    make uv-outdated            Check for outdated packages"
 	@echo ""
 
-setup: check-docker check-python install firecrawl-init firecrawl-build firecrawl-start
+setup: check-docker check-uv check-python install firecrawl-init firecrawl-build firecrawl-start
 	@echo ""
-	@echo "  ╔═══════════════════════════════════════════════════════════╗"
-	@echo "  ║                                                           ║"
-	@echo "  ║                    SETUP COMPLETE                         ║"
-	@echo "  ║                                                           ║"
-	@echo "  ║  Next steps:                                              ║"
-	@echo "  ║    make test     - Verify Firecrawl is working            ║"
-	@echo "  ║    make scrape   - Start scraping Dominican recipes       ║"
-	@echo "  ║                                                           ║"
-	@echo "  ╚═══════════════════════════════════════════════════════════╝"
+	@echo "  +-----------------------------------------------------------+"
+	@echo "  |                                                           |"
+	@echo "  |                    SETUP COMPLETE                         |"
+	@echo "  |                                                           |"
+	@echo "  |  Next steps:                                              |"
+	@echo "  |    make test     - Verify Firecrawl is working            |"
+	@echo "  |    make scrape   - Start scraping Dominican recipes       |"
+	@echo "  |                                                           |"
+	@echo "  +-----------------------------------------------------------+"
 	@echo ""
 
-install: check-python
-	@if [ ! -f requirements.txt ]; then \
-		echo "Error: requirements.txt not found"; \
+install: check-uv check-python
+	@if [ ! -f pyproject.toml ]; then \
+		echo ""; \
+		echo "  [x] Error: pyproject.toml not found"; \
+		echo "  Run 'uv init' to create one or restore from backup"; \
+		echo ""; \
 		exit 1; \
 	fi
 	@echo ""
-	@echo "  Installing Python dependencies..."
-	@$(PIP) install -r requirements.txt
+	@echo "  Installing Python dependencies with UV..."
+	@echo "  ------------------------------------------------------------"
 	@echo ""
-	@echo "  ✓ Dependencies installed successfully"
+	@echo "  Creating virtual environment and syncing dependencies..."
+	@$(UV) sync
+	@echo ""
+	@echo "  [+] Dependencies installed successfully"
 	@echo ""
 
 firecrawl-init:
@@ -175,7 +191,7 @@ firecrawl-clean:
 	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) down -v
 	@echo "Firecrawl cleaned."
 
-scrape: check-python
+scrape: check-uv
 	@if [ ! -f scraper.py ]; then \
 		echo "Error: scraper.py not found"; \
 		exit 1; \
@@ -183,7 +199,7 @@ scrape: check-python
 	@echo "Starting scraper..."
 	@$(PYTHON) scraper.py
 
-scrape-url: check-python
+scrape-url: check-uv
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
 		echo "Usage: make scrape-url URL=https://www.cocinadominicana.com/batata-asada"; \
@@ -192,7 +208,7 @@ scrape-url: check-python
 	@echo "Scraping single URL: $(URL)"
 	@$(PYTHON) cli.py scrape "$(URL)"
 
-scrape-category: check-python
+scrape-category: check-uv
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
 		echo "Usage: make scrape-category URL=https://www.cocinadominicana.com/cocina DEPTH=2"; \
@@ -205,7 +221,7 @@ scrape-category: check-python
 		$(PYTHON) cli.py crawl "$(URL)"; \
 	fi
 
-scrape-list: check-python
+scrape-list: check-uv
 	@if [ -z "$(FILE)" ]; then \
 		echo "Error: FILE parameter required"; \
 		echo "Usage: make scrape-list FILE=urls.txt"; \
@@ -218,7 +234,7 @@ scrape-list: check-python
 	@echo "Scraping URLs from file: $(FILE)"
 	@$(PYTHON) cli.py scrape-list "$(FILE)"
 
-scrape-discover: check-python
+scrape-discover: check-uv
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
 		echo "Usage: make scrape-discover URL=https://www.cocinadominicana.com/cocina"; \
@@ -236,7 +252,7 @@ scrape-discover: check-python
 		$(PYTHON) cli.py discover "$(URL)"; \
 	fi
 
-process: check-python
+process: check-uv
 	@if [ ! -f process_to_plaintext.py ]; then \
 		echo "Error: process_to_plaintext.py not found"; \
 		exit 1; \
@@ -247,11 +263,11 @@ process: check-python
 	fi
 	@echo ""
 	@echo "  Processing markdown to plain text..."
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "  ------------------------------------------------------------"
 	@echo ""
 	@$(PYTHON) process_to_plaintext.py
 	@echo ""
-	@echo "  ✓ Processing complete"
+	@echo "  [+] Processing complete"
 	@echo ""
 
 test:
@@ -276,7 +292,9 @@ clean:
 clean-all: clean firecrawl-clean
 	@echo "Removing Firecrawl installation..."
 	@rm -rf $(FIRECRAWL_DIR)
-	@echo "Full cleanup complete."
+	@echo "Removing virtual environment..."
+	@rm -rf $(VENV)
+	@echo "[+] Full cleanup complete."
 
 check-docker:
 	@which docker > /dev/null || (echo "Error: Docker not found. Install from https://docs.docker.com/get-docker/" && exit 1)
@@ -286,5 +304,77 @@ check-docker:
 	@echo "Docker check passed."
 
 check-python:
-	@which $(PYTHON) > /dev/null || (echo "Error: Python 3 not found." && exit 1)
-	@echo "Python check passed."
+	@which python3 > /dev/null || (echo "Error: Python 3 not found." && exit 1)
+	@echo "[+] Python check passed."
+
+check-uv:
+	@if ! command -v uv > /dev/null 2>&1; then \
+		echo ""; \
+		echo "  UV not found. Installing UV..."; \
+		echo "  ------------------------------------------------------------"; \
+		OS=$$(uname -s); \
+		if [ "$$OS" = "Darwin" ] || [ "$$OS" = "Linux" ]; then \
+			echo "  Detected $$OS - installing via official installer..."; \
+			curl -LsSf $(UV_INSTALL_URL) | sh; \
+			echo ""; \
+			echo "  [+] UV installed successfully"; \
+			echo "  [!] Please restart your shell or run: source $$HOME/.cargo/env"; \
+			echo ""; \
+		else \
+			echo ""; \
+			echo "  +----------------------------------------------------------+"; \
+			echo "  |  UV Installation Required (Windows Detected)             |"; \
+			echo "  +----------------------------------------------------------+"; \
+			echo ""; \
+			echo "  Please install UV manually:"; \
+			echo ""; \
+			echo "  Option 1 - PowerShell (Recommended):"; \
+			echo "    powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\""; \
+			echo ""; \
+			echo "  Option 2 - pip:"; \
+			echo "    pip install uv"; \
+			echo ""; \
+			echo "  Option 3 - Standalone installer:"; \
+			echo "    https://github.com/astral-sh/uv/releases"; \
+			echo ""; \
+			exit 1; \
+		fi \
+	else \
+		UV_VERSION=$$(uv --version); \
+		echo "[+] UV check passed ($$UV_VERSION)"; \
+	fi
+
+uv-add:
+	@if [ -z "$(PKG)" ]; then \
+		echo "[x] Error: PKG parameter required"; \
+		echo "Usage: make uv-add PKG=requests"; \
+		echo "       make uv-add PKG='requests>=2.31.0'"; \
+		exit 1; \
+	fi
+	@echo "Adding package: $(PKG)"
+	@$(UV) add $(PKG)
+	@echo "[+] Package added and lockfile updated"
+
+uv-remove:
+	@if [ -z "$(PKG)" ]; then \
+		echo "[x] Error: PKG parameter required"; \
+		echo "Usage: make uv-remove PKG=requests"; \
+		exit 1; \
+	fi
+	@echo "Removing package: $(PKG)"
+	@$(UV) remove $(PKG)
+	@echo "[+] Package removed and lockfile updated"
+
+uv-sync:
+	@echo "Syncing dependencies from pyproject.toml..."
+	@$(UV) sync
+	@echo "[+] Dependencies synchronized"
+
+uv-lock:
+	@echo "Updating lockfile..."
+	@$(UV) lock
+	@echo "[+] Lockfile updated"
+
+uv-outdated:
+	@echo "Checking for outdated packages..."
+	@$(UV) pip list --outdated
