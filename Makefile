@@ -1,7 +1,7 @@
 .PHONY: help setup install check-uv firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
         firecrawl-restart firecrawl-status firecrawl-logs firecrawl-clean \
         scrape scrape-url scrape-category scrape-list scrape-discover process test clean clean-all \
-        check-docker check-python uv-add uv-remove uv-sync uv-lock uv-outdated
+        check-docker check-python uv-add uv-remove uv-sync uv-lock uv-outdated setup-site list-sites
 
 .DEFAULT_GOAL := help
 
@@ -24,16 +24,20 @@ help:
 	@echo "  ║  ╚██████╗╚██████╔╝╚██████╗██║██║ ╚████║██║  ██║    ██████╔╝██║  ██║   ║"
 	@echo "  ║   ╚═════╝ ╚═════╝  ╚═════╝╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ║"
 	@echo "  ║                                                                       ║"
-	@echo "  ║              Dominican Culinary Heritage Web Scraper                  ║"
+	@echo "  ║              Multi-Site Web Scraper with Firecrawl                    ║"
 	@echo "  ║                  Local Firecrawl + Python3                            ║"
 	@echo "  ║                                                                       ║"
 	@echo "  ╚═══════════════════════════════════════════════════════════════════════╝"
+	@echo ""
+	@echo "  ENVIRONMENT: CRAWL_DOMAIN=<domain> (REQUIRED for scraping)"
 	@echo ""
 	@echo "  SETUP COMMANDS"
 	@echo "  ------------------------------------------------------------"
 	@echo "    make setup              Complete first-time setup (install + firecrawl)"
 	@echo "    make install            Install Python dependencies"
 	@echo "    make firecrawl-init     Clone and initialize Firecrawl"
+	@echo "    make setup-site DOMAIN=<domain>  Create new site configuration"
+	@echo "    make list-sites         List available sites"
 	@echo ""
 	@echo "  FIRECRAWL MANAGEMENT"
 	@echo "  ------------------------------------------------------------"
@@ -44,14 +48,14 @@ help:
 	@echo "    make firecrawl-status   Show service status"
 	@echo "    make firecrawl-logs     Follow API logs"
 	@echo ""
-	@echo "  SCRAPING COMMANDS"
+	@echo "  SCRAPING COMMANDS (Require CRAWL_DOMAIN environment variable)"
 	@echo "  ------------------------------------------------------------"
-	@echo "    make scrape                    Run all configured sections"
-	@echo "    make scrape-url URL=<url>      Scrape a single URL"
-	@echo "    make scrape-category URL=<url> Crawl category and scrape articles"
-	@echo "    make scrape-list FILE=<file>   Scrape URLs from file"
-	@echo "    make scrape-discover URL=<url> Discover URLs with interactive menu"
-	@echo "    make test                      Test Firecrawl endpoint"
+	@echo "    CRAWL_DOMAIN=example.com make scrape                 Run all configured sections"
+	@echo "    CRAWL_DOMAIN=example.com make scrape-url URL=<url>   Scrape a single URL"
+	@echo "    CRAWL_DOMAIN=example.com make scrape-category URL=<url>  Crawl category"
+	@echo "    CRAWL_DOMAIN=example.com make scrape-list FILE=<file>    Scrape URLs from file"
+	@echo "    CRAWL_DOMAIN=example.com make scrape-discover URL=<url>  Discover URLs"
+	@echo "    make test                                            Test Firecrawl endpoint"
 	@echo ""
 	@echo "  PROCESSING COMMANDS"
 	@echo "  ------------------------------------------------------------"
@@ -192,33 +196,26 @@ firecrawl-clean:
 	@echo "Firecrawl cleaned."
 
 scrape: check-uv
-	@if [ ! -f scraper.py ]; then \
-		echo "Error: scraper.py not found"; \
-		exit 1; \
-	fi
-	@echo "Starting scraper..."
-	@$(PYTHON) scraper.py
+	@$(PYTHON) -m core.cli scrape-all
 
 scrape-url: check-uv
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-url URL=https://www.cocinadominicana.com/batata-asada"; \
+		echo "Usage: make scrape-url URL=https://example.com/page"; \
 		exit 1; \
 	fi
-	@echo "Scraping single URL: $(URL)"
-	@$(PYTHON) cli.py scrape "$(URL)"
+	@$(PYTHON) -m core.cli scrape "$(URL)"
 
 scrape-category: check-uv
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-category URL=https://www.cocinadominicana.com/cocina DEPTH=2"; \
+		echo "Usage: make scrape-category URL=https://example.com/category DEPTH=2"; \
 		exit 1; \
 	fi
-	@echo "Crawling category: $(URL)"
 	@if [ -n "$(DEPTH)" ]; then \
-		$(PYTHON) cli.py crawl "$(URL)" --depth $(DEPTH); \
+		$(PYTHON) -m core.cli crawl "$(URL)" --depth $(DEPTH); \
 	else \
-		$(PYTHON) cli.py crawl "$(URL)"; \
+		$(PYTHON) -m core.cli crawl "$(URL)"; \
 	fi
 
 scrape-list: check-uv
@@ -231,43 +228,61 @@ scrape-list: check-uv
 		echo "Error: File not found: $(FILE)"; \
 		exit 1; \
 	fi
-	@echo "Scraping URLs from file: $(FILE)"
-	@$(PYTHON) cli.py scrape-list "$(FILE)"
+	@$(PYTHON) -m core.cli scrape-list "$(FILE)"
 
 scrape-discover: check-uv
 	@if [ -z "$(URL)" ]; then \
 		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-discover URL=https://www.cocinadominicana.com/cocina"; \
+		echo "Usage: make scrape-discover URL=https://example.com/section"; \
 		echo "       make scrape-discover URL=https://... SAVE=urls.txt NOINTERACTIVE=1"; \
 		exit 1; \
 	fi
-	@echo "Discovering URLs from: $(URL)"
 	@if [ -n "$(NOINTERACTIVE)" ]; then \
 		if [ -n "$(SAVE)" ]; then \
-			$(PYTHON) cli.py discover "$(URL)" --no-interactive --save "$(SAVE)"; \
+			$(PYTHON) -m core.cli discover "$(URL)" --no-interactive --save "$(SAVE)"; \
 		else \
-			$(PYTHON) cli.py discover "$(URL)" --no-interactive; \
+			$(PYTHON) -m core.cli discover "$(URL)" --no-interactive; \
 		fi \
 	else \
-		$(PYTHON) cli.py discover "$(URL)"; \
+		$(PYTHON) -m core.cli discover "$(URL)"; \
 	fi
 
 process: check-uv
-	@if [ ! -f process_to_plaintext.py ]; then \
-		echo "Error: process_to_plaintext.py not found"; \
-		exit 1; \
-	fi
 	@if [ ! -d scraped_content ]; then \
-		echo "Error: scraped_content directory not found. Run 'make scrape' first."; \
+		echo "Error: scraped_content directory not found. Run scraping commands first."; \
 		exit 1; \
 	fi
+	@$(PYTHON) -m core.cli process
+
+setup-site:
+	@if [ -z "$(DOMAIN)" ]; then \
+		echo "Error: DOMAIN parameter required"; \
+		echo "Usage: make setup-site DOMAIN=example.com"; \
+		exit 1; \
+	fi
+	@echo "Creating site configuration for $(DOMAIN)..."
+	@DOMAIN_DIR=$$(echo "$(DOMAIN)" | sed 's/\./_/g'); \
+	if [ -d "sites/$$DOMAIN_DIR" ]; then \
+		echo "Error: Site $$DOMAIN_DIR already exists"; \
+		exit 1; \
+	fi; \
+	mkdir -p sites/$$DOMAIN_DIR; \
+	sed "s/DOMAIN_PLACEHOLDER/$(DOMAIN)/g" templates/site_config.yml > sites/$$DOMAIN_DIR/config.yml; \
+	cp templates/processing_patterns.yml sites/$$DOMAIN_DIR/; \
+	echo ""; \
+	echo "  [+] Site created: sites/$$DOMAIN_DIR/"; \
+	echo "  [!] Edit sites/$$DOMAIN_DIR/config.yml before crawling"; \
+	echo ""; \
+	echo "  Next steps:"; \
+	echo "    1. Edit sites/$$DOMAIN_DIR/config.yml"; \
+	echo "    2. CRAWL_DOMAIN=$(DOMAIN) make scrape"; \
+	echo ""
+
+list-sites:
 	@echo ""
-	@echo "  Processing markdown to plain text..."
-	@echo "  ------------------------------------------------------------"
-	@echo ""
-	@$(PYTHON) process_to_plaintext.py
-	@echo ""
-	@echo "  [+] Processing complete"
+	@echo "  Available Sites:"
+	@echo "  ────────────────────────────────────────────"
+	@ls -1 sites/ 2>/dev/null | grep -v README | grep -v __pycache__ | sed 's/_/./g' | sed 's/^/    /' || echo "    No sites configured"
 	@echo ""
 
 test:
