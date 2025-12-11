@@ -1,0 +1,28 @@
+output_dir: "scraped_content"
+plaintext_output_dir: "scrapped_plain_text"
+
+crawler:
+  max_depth: 2
+  delay_seconds: 0.5
+  skip_existing: true
+  max_retries: 3
+  base_retry_delay: 2
+
+filters:
+  exclude_patterns:
+    - "wp-content"
+    - "wp-json"
+    - "xmlrpc"
+    - "feed"
+    - "comments"
+    - "\\.(jpg|jpeg|png|gif|svg|webp|ico)$"
+    - "facebook\\.com"
+    - "instagram\\.com"
+    - "youtube\\.com"
+    - "pinterest\\.com"
+    - "twitter\\.com"
+    - "#"
+
+processing:
+  filter_english: true
+  min_content_length: 100
