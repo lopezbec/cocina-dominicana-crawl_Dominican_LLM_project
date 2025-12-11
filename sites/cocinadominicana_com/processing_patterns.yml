@@ -1,0 +1,21 @@
+navigation_patterns:
+  - "Por \\*\\*\\[Clara Gonzalez\\][^\\n]+"
+  - "Más Historia, Tradiciones, y Cultura.*"
+  - "¡Hola, gracias por visitarnos!.*"
+  - "Soy Tía Clara.*"
+  - "Aprende más sobre mi.*"
+  - "Comparte tus preguntas.*"
+  - "Suscríbete.*para recibir.*"
+  - "¡No pierdas el contacto!.*"
+  - "Síguenos en:.*"
+
+footer_markers:
+  - "¡Hola, gracias por visitarnos"
+  - "Más Historia, Tradiciones"
+  - "Suscríbete para recibir"
+
+excluded_article_paths:
+  - "cultura/herencia"
+  - "cultura/tradiciones-costumbres"
+  - "cultura/celebraciones"
+  - "cultura/versus"

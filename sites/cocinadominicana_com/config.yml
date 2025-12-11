@@ -1,0 +1,309 @@
+base_url: "https://www.cocinadominicana.com"
+output_dir: "scraped_content"
+
+filters:
+  include_patterns:
+    - "cocinadominicana\\.com/.*"
+
+  exclude_patterns:
+    - "wp-content"
+    - "wp-json"
+    - "xmlrpc"
+    - "feed"
+    - "comments"
+    - "\\.(jpg|jpeg|png|gif|svg|webp|ico)$"
+    - "suscribete"
+    - "subscribe"
+    - "contactanos"
+    - "contact"
+    - "facebook\\.com"
+    - "instagram\\.com"
+    - "youtube\\.com"
+    - "pinterest\\.com"
+    - "twitter\\.com"
+    - "dominicancooking\\.com"
+    - "#"
+
+crawler:
+  max_depth: 2
+  delay_seconds: 0.5
+  skip_existing: true
+  max_retries: 3
+  base_retry_delay: 2
+
+sections:
+  cultura_origenes:
+    name: "Cultura y Orígenes"
+    url: "https://www.cocinadominicana.com/cultura/herencia"
+
+  tradiciones_costumbres:
+    name: "Tradiciones y Costumbres"
+    url: "https://www.cocinadominicana.com/cultura/tradiciones-costumbres"
+
+  festividades_celebraciones:
+    name: "Festividades y Celebraciones"
+    url: "https://www.cocinadominicana.com/cultura/celebraciones"
+
+  comparaciones:
+    name: "Comparaciones"
+    url: "https://www.cocinadominicana.com/cultura/versus"
+
+  cocina_basicos:
+    name: "Cocina Básica"
+    url: "https://www.cocinadominicana.com/cocinar/basicos"
+
+  cocina_ingredientes:
+    name: "Guía de Ingredientes"
+    url: "https://www.cocinadominicana.com/cocinar/ingredientes"
+
+  cocina_como_hacer:
+    name: "Cómo Hacer"
+    url: "https://www.cocinadominicana.com/cocinar/como-hacer"
+
+  cocina_ideas:
+    name: "Ideas de Cocina"
+    url: "https://www.cocinadominicana.com/cocinar/ideas"
+
+  recetas:
+    name: "Indice recetas"
+    url: "https://www.cocinadominicana.com/indice-recetas"
+
+  recetas_acompanamientos:
+    name: "Acompañamientos"
+    url: "https://www.cocinadominicana.com/recetas/acompanamientos"
+
+  recetas_bebidas:
+    name: "Bebidas"
+    url: "https://www.cocinadominicana.com/recetas/bebidas"
+
+  recetas_ensaladas:
+    name: "Ensaladas"
+    url: "https://www.cocinadominicana.com/recetas/ensaladas"
+
+  recetas_paletas:
+    name: "Paletas y Helados"
+    url: "https://www.cocinadominicana.com/recetas/paletas"
+
+  recetas_pastelones:
+    name: "Pastelones"
+    url: "https://www.cocinadominicana.com/recetas/pastelones"
+
+  recetas_picaderas:
+    name: "Picaderas"
+    url: "https://www.cocinadominicana.com/recetas/picaderas"
+
+  recetas_platos_principales:
+    name: "Platos Principales"
+    url: "https://www.cocinadominicana.com/recetas/platos-principales"
+
+  recetas_postres:
+    name: "Postres"
+    url: "https://www.cocinadominicana.com/recetas/postres"
+
+  recetas_sazones_condimentos:
+    name: "Sazones y Condimentos"
+    url: "https://www.cocinadominicana.com/recetas/sazones-condimentos"
+
+  recetas_sopas:
+    name: "Sopas y Caldos"
+    url: "https://www.cocinadominicana.com/recetas/sopas"
+
+  recetas_almuerzo:
+    name: "Almuerzo"
+    url: "https://www.cocinadominicana.com/recetas/almuerzo"
+
+  recetas_cena:
+    name: "Cena"
+    url: "https://www.cocinadominicana.com/recetas/cena"
+
+  recetas_desayuno:
+    name: "Desayuno"
+    url: "https://www.cocinadominicana.com/recetas/desayuno"
+
+  recetas_keto:
+    name: "Keto"
+    url: "https://www.cocinadominicana.com/recetas/keto"
+
+  recetas_ligera:
+    name: "Bajo Calorías"
+    url: "https://www.cocinadominicana.com/recetas/ligera"
+
+  recetas_libre_gluten:
+    name: "Sin Gluten"
+    url: "https://www.cocinadominicana.com/recetas/libre-gluten"
+
+  recetas_veganas:
+    name: "Veganas"
+    url: "https://www.cocinadominicana.com/recetas/veganas"
+
+  recetas_vegetarianas:
+    name: "Vegetarianas"
+    url: "https://www.cocinadominicana.com/recetas/vegetarianas"
+
+  recetas_cuaresma:
+    name: "Cuaresma"
+    url: "https://www.cocinadominicana.com/tradiciones-comidas-cuaresma-dominicana"
+
+  recetas_invierno:
+    name: "Otoño e Invierno"
+    url: "https://www.cocinadominicana.com/recetas/invierno"
+
+  recetas_navidad:
+    name: "Navidad"
+    url: "https://www.cocinadominicana.com/navidad"
+
+  recetas_verano:
+    name: "Verano y Primavera"
+    url: "https://www.cocinadominicana.com/recetas/verano"
+
+  recetas_arroz:
+    name: "Arroz"
+    url: "https://www.cocinadominicana.com/recetas/arroz"
+
+  recetas_auyama:
+    name: "Auyama"
+    url: "https://www.cocinadominicana.com/recetas/auyama"
+
+  recetas_bacalao:
+    name: "Bacalao"
+    url: "https://www.cocinadominicana.com/recetas-bacalao-como-cocinar"
+
+  recetas_batata:
+    name: "Batata"
+    url: "https://www.cocinadominicana.com/recetas/batata"
+
+  recetas_berenjena:
+    name: "Berenjena"
+    url: "https://www.cocinadominicana.com/berenjena-recetas"
+
+  recetas_carne:
+    name: "Carne"
+    url: "https://www.cocinadominicana.com/recetas/carne"
+
+  recetas_cerdo:
+    name: "Cerdo"
+    url: "https://www.cocinadominicana.com/recetas/cerdo"
+
+  recetas_coco:
+    name: "Coco"
+    url: "https://www.cocinadominicana.com/recetas/coco"
+
+  recetas_frutas:
+    name: "Frutas"
+    url: "https://www.cocinadominicana.com/recetas/fruta"
+
+  recetas_guandules:
+    name: "Guandules"
+    url: "https://www.cocinadominicana.com/guandules-gandules-recetas"
+
+  recetas_habichuelas:
+    name: "Habichuelas"
+    url: "https://www.cocinadominicana.com/recetas/habichuelas"
+
+  recetas_longaniza:
+    name: "Longaniza"
+    url: "https://www.cocinadominicana.com/recetas/longaniza"
+
+  recetas_maiz:
+    name: "Maíz"
+    url: "https://www.cocinadominicana.com/recetas/maiz"
+
+  recetas_mariscos:
+    name: "Mariscos"
+    url: "https://www.cocinadominicana.com/recetas/mariscos-pescados"
+
+  recetas_papa:
+    name: "Papa"
+    url: "https://www.cocinadominicana.com/recetas/papa"
+
+  recetas_pasta:
+    name: "Pasta"
+    url: "https://www.cocinadominicana.com/recetas/pasta"
+
+  recetas_pescado:
+    name: "Pescado"
+    url: "https://www.cocinadominicana.com/recetas/pescado"
+
+  recetas_platano:
+    name: "Plátano"
+    url: "https://www.cocinadominicana.com/recetas/platano"
+
+  recetas_pollo:
+    name: "Pollo"
+    url: "https://www.cocinadominicana.com/recetas/pollo"
+
+  recetas_res:
+    name: "Res"
+    url: "https://www.cocinadominicana.com/recetas/res"
+
+  recetas_salami:
+    name: "Salami"
+    url: "https://www.cocinadominicana.com/recetas/salami"
+
+  recetas_tayota:
+    name: "Tayota"
+    url: "https://www.cocinadominicana.com/tayota-recetas-chayote"
+
+  recetas_trigo:
+    name: "Trigo"
+    url: "https://www.cocinadominicana.com/recetas/trigo"
+
+  recetas_yuca:
+    name: "Yuca"
+    url: "https://www.cocinadominicana.com/recetas/yuca"
+
+  platos_tipicos:
+    name: "Platos Típicos Dominicanos"
+    url: "https://www.cocinadominicana.com/platos-comida-dominicana"
+
+  desayuno_tradicional:
+    name: "Desayuno Tradicional Dominicano"
+    url: "https://www.cocinadominicana.com/tres-golpes-desayuno-dominicano"
+
+  bandera_dominicana:
+    name: "La Bandera Dominicana"
+    url: "https://www.cocinadominicana.com/bandera-dominicana-almuerzo"
+
+  postres_tradicionales:
+    name: "Postres Tradicionales"
+    url: "https://www.cocinadominicana.com/postres-dominicanos-tradicionales-mas-populares"
+
+  frutas_dominicanas:
+    name: "Frutas Dominicanas"
+    url: "https://www.cocinadominicana.com/frutas-dominicanas"
+
+  tuberculos_viveres:
+    name: "Tubérculos y Víveres"
+    url: "https://www.cocinadominicana.com/viveres-dominicanos-tuberculos"
+
+  hierbas_dominicanas:
+    name: "Hierbas Dominicanas"
+    url: "https://www.cocinadominicana.com/hierbas-dominicanas"
+
+  especias_cocina:
+    name: "Especias de la Cocina Dominicana"
+    url: "https://www.cocinadominicana.com/6981/especias-cocina-dominicana"
+
+  glosario:
+    name: "Glosario Culinario"
+    url: "https://www.cocinadominicana.com/glosario"
+
+  inicia:
+    name: "Inicia Aquí"
+    url: "https://www.cocinadominicana.com/inicia"
+
+  sobre:
+    name: "Sobre Nosotros"
+    url: "https://www.cocinadominicana.com/sobre"
+
+  libros:
+    name: "Libros"
+    url: "https://www.cocinadominicana.com/nuestro-libro"
+
+  mas_populares:
+    name: "Más Populares"
+    url: "https://www.cocinadominicana.com/mas-populares"
+
+  reciente:
+    name: "Reciente"
+    url: "https://www.cocinadominicana.com/reciente"
