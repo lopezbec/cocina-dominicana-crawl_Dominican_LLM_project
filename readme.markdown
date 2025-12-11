@@ -1,15 +1,15 @@
-# Dominican Culinary Culture Scraper 🇩🇴
+# Multi-Site Web Scraper 🌐
 
 <div align="center">
 
-![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![API](https://img.shields.io/badge/Firecrawl-API-FF6B6B?style=for-the-badge&logo=fire&logoColor=white)
 ![License](https://img.shields.io/badge/License-MIT-green.svg?style=for-the-badge)
 ![Status](https://img.shields.io/badge/Status-Production-success?style=for-the-badge)
 
-**Production-Ready Web Scraper for Dominican Culinary Heritage**
+**Production-Ready Multi-Site Web Scraper**
 
-*Comprehensive content extraction from Cocina Dominicana with canonical logging, clean architecture, and robust error handling*
+*Flexible, environment-driven scraper supporting multiple domains with canonical logging, clean architecture, and robust error handling*
 
 </div>
 
@@ -21,19 +21,21 @@
 
 ```mermaid
 graph TB
-    A[scraper.py] --> B[Firecrawl API:3002]
-    B --> C[Redis:6379]
-    B --> D[PostgreSQL:5432]
-    B --> E[Content Extraction]
-    A --> F[File System]
-    F --> G[scraped_content/]
-    G --> H[Markdown Files]
-    G --> I[JSON Metadata]
-    G --> J[Summary Report]
+    A[core.cli] --> B[Firecrawl API:3002]
+    A --> C[Config System]
+    C --> D[Global Config]
+    C --> E[Site Configs]
+    B --> F[Redis:6379]
+    B --> G[PostgreSQL:5432]
+    B --> H[Content Extraction]
+    A --> I[File System]
+    I --> J[scraped_content/]
+    J --> K[Markdown Files with Domain]
+    J --> L[metadata.jsonl]
     
     style A fill:#3776AB,stroke:#fff,stroke-width:2px,color:#fff
     style B fill:#FF6B6B,stroke:#fff,stroke-width:2px,color:#fff
-    style G fill:#28a745,stroke:#fff,stroke-width:2px,color:#fff
+    style J fill:#28a745,stroke:#fff,stroke-width:2px,color:#fff
 ```
 
 ## Dependencies
@@ -44,9 +46,11 @@ graph TB
 |-----------|---------|---------|
 | Docker | 20.10+ | Container runtime |
 | Docker Compose | 2.0+ | Service orchestration |
-| Python | 3.8+ | Runtime environment |
+| Python | 3.9+ | Runtime environment |
+| uv | Latest | Fast Python package manager |
 | firecrawl-py | Latest | API client library |
 | python-dotenv | Latest | Environment variable management |
+| pyyaml | Latest | Configuration file parsing |
 
 ### Local Firecrawl Stack
 The application runs Firecrawl locally via Docker:
@@ -83,7 +87,8 @@ gantt
 ### Prerequisites
 
 - **Docker** and **Docker Compose** installed ([Get Docker](https://docs.docker.com/get-docker/))
-- **Python 3.8+**
+- **Python 3.9+**
+- **uv** package manager ([Get uv](https://docs.astral.sh/uv/))
 - **4GB RAM minimum** (8GB recommended)
 
 ### Quick Start
@@ -92,43 +97,66 @@ gantt
 git clone https://github.com/cristiandlahoz/cocina-dominicana-crawl.git
 cd cocina-dominicana-crawl
 
-python3 -m venv venv
-source venv/bin/activate
-
 make setup
 
 make test
 
-make scrape
+CRAWL_DOMAIN=cocinadominicana.com make scrape
 
 make firecrawl-stop
 ```
 
 ### Detailed Setup
 
-#### Step 1: Clone and Setup Python Environment
+#### Step 1: Clone Repository
 
 ```bash
 git clone https://github.com/cristiandlahoz/cocina-dominicana-crawl.git
 cd cocina-dominicana-crawl
-
-python3 -m venv venv
-source venv/bin/activate
 ```
 
-#### Step 2: Run Complete Setup
+#### Step 2: Install uv Package Manager
+
+```bash
+# macOS/Linux
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Or use Homebrew
+brew install uv
+
+# Windows
+powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
+```
+
+#### Step 3: Run Complete Setup
 
 ```bash
 make setup
 ```
 
 This command will:
-- Install Python dependencies
+- Sync Python dependencies using uv
 - Clone and initialize Firecrawl
 - Build Docker images (5-10 minutes first time)
 - Start all services (API, Redis, PostgreSQL, Playwright)
 
-#### Step 3: Verify Services
+#### Step 4: Configure Environment
+
+Create `.env` from template and set required CRAWL_DOMAIN:
+
+```bash
+cp .env.example .env
+# Add to .env:
+CRAWL_DOMAIN=cocinadominicana.com
+```
+
+Or set inline with commands:
+
+```bash
+CRAWL_DOMAIN=cocinadominicana.com make scrape
+```
+
+#### Step 5: Verify Services
 
 ```bash
 make test
@@ -136,13 +164,13 @@ make test
 
 Expected: JSON response with scraped content from example.com
 
-#### Step 4: Run Scraper
+#### Step 6: Run Scraper
 
 ```bash
-make scrape
+CRAWL_DOMAIN=cocinadominicana.com make scrape
 ```
 
-#### Step 5: Stop Services When Done
+#### Step 7: Stop Services When Done
 
 ```bash
 make firecrawl-stop
@@ -161,48 +189,69 @@ Common commands:
 | Command | Description |
 |---------|-------------|
 | `make setup` | Complete first-time setup |
+| `make setup-site DOMAIN=example.com` | Setup new site configuration |
+| `make list-sites` | List configured sites |
 | `make firecrawl-start` | Start Firecrawl services |
 | `make firecrawl-stop` | Stop Firecrawl services |
 | `make firecrawl-restart` | Restart all services |
 | `make firecrawl-status` | Show service status |
 | `make firecrawl-logs` | Follow API logs |
-| `make scrape` | Run all configured sections |
-| `make scrape-url URL=<url>` | Scrape a single URL |
-| `make scrape-category URL=<url>` | Crawl category and scrape articles |
-| `make scrape-list FILE=<file>` | Scrape URLs from file |
-| `make scrape-discover URL=<url>` | Discover URLs without scraping |
+| `make scrape` | Run all configured sections (requires CRAWL_DOMAIN) |
+| `make scrape-url URL=<url>` | Scrape a single URL (requires CRAWL_DOMAIN) |
+| `make scrape-category URL=<url>` | Crawl category and scrape articles (requires CRAWL_DOMAIN) |
+| `make scrape-list FILE=<file>` | Scrape URLs from file (requires CRAWL_DOMAIN) |
+| `make scrape-discover URL=<url>` | Discover URLs without scraping (requires CRAWL_DOMAIN) |
 | `make test` | Test Firecrawl endpoint |
 | `make clean` | Remove scraped content |
 | `make clean-all` | Remove everything including Firecrawl |
 
+**Note**: All scraping commands require the `CRAWL_DOMAIN` environment variable:
+
+```bash
+CRAWL_DOMAIN=cocinadominicana.com make scrape
+CRAWL_DOMAIN=example.com make scrape-url URL=https://example.com/article
+```
+
 ## Features
 
-Production-ready scraper with enterprise-grade reliability:
+Production-ready multi-site scraper with enterprise-grade reliability:
 
 ### Core Capabilities
 
+- **Multi-Site Support**: Scrape multiple domains with site-specific configurations
+- **Environment-Driven**: CRAWL_DOMAIN variable controls which site to scrape
+- **Two-Level Configuration**: Global defaults with site-specific overrides
+- **Auto-Generated Patterns**: URL extraction patterns automatically generated from base_url
 - **Local Firecrawl**: No API keys, no rate limits, full control
 - **Flexible Scraping**: Single URL, category crawl, batch processing, or section-based
 - **Smart URL Discovery**: Automatic link extraction with configurable filtering
 - **Canonical Logging**: Structured logging following Stripe's canonical log pattern
-- **Clean Architecture**: Functions follow Single Responsibility Principle with <20 line limit
+- **Clean Architecture**: Functions follow Single Responsibility Principle
 - **Fast Scraping**: 6x faster than cloud API (0.5s vs 3s per article)
 - **Resume Capability**: Automatically skips already scraped articles
 - **Performance Monitoring**: Built-in timing for all operations
 - **Robust Error Handling**: Comprehensive exception handling with detailed logging
-- **File Organization**: Automatic directory structure creation and safe filename generation
+- **File Organization**: Domain-aware filename generation with global doc IDs
 - **Docker-based**: Easy setup with docker-compose, no complex configuration
 - **CLI Interface**: User-friendly command-line interface with multiple commands
-- **Configuration-driven**: YAML-based configuration for easy customization
+- **YAML Configuration**: Easy site setup and customization
 
-### Content Categories
+### Adding New Sites
 
-The scraper targets 4 main cultural sections:
+Create a new site configuration easily:
 
-1. **Cultura y Orígenes** (`cultura_origenes/`)
-2. **Tradiciones y Costumbres** (`tradiciones_costumbres/`)  
-3. **Festividades y Celebraciones** (`festividades_celebraciones/`)
-4. **Comparaciones** (`comparaciones/`)
+```bash
+make setup-site DOMAIN=example.com
+```
+
+Or manually:
+
+1. Create `sites/example_com/config.yml`
+2. Create `sites/example_com/processing_patterns.yml`
+3. Configure base_url, filters, and crawler settings
+4. Run: `CRAWL_DOMAIN=example.com make scrape`
+
+See `sites/README.md` for detailed instructions.
 
 ### Data Model
 
@@ -238,6 +287,20 @@ erDiagram
 
 ## Usage
 
+### Environment Variable (REQUIRED)
+
+All scraping commands require the `CRAWL_DOMAIN` environment variable:
+
+```bash
+# Set in .env file
+echo "CRAWL_DOMAIN=cocinadominicana.com" >> .env
+
+# Or set inline with commands
+CRAWL_DOMAIN=cocinadominicana.com make scrape
+```
+
+The scraper will validate the domain exists in `sites/` and show helpful errors if not set.
+
 ### Command-Line Interface
 
 The scraper provides a flexible CLI for different scraping scenarios:
@@ -245,17 +308,17 @@ The scraper provides a flexible CLI for different scraping scenarios:
 #### Scrape All Configured Sections
 
 ```bash
-make scrape
-python scraper.py
-python cli.py scrape-all
+CRAWL_DOMAIN=cocinadominicana.com make scrape
+# Or directly:
+CRAWL_DOMAIN=cocinadominicana.com uv run python -m core.cli scrape-all
 ```
 
 #### Scrape Single URL
 
 ```bash
-make scrape-url URL="https://www.cocinadominicana.com/batata-asada"
-python cli.py scrape "https://www.cocinadominicana.com/batata-asada"
-python cli.py scrape "https://www.cocinadominicana.com/batata-asada" --output recipes
+CRAWL_DOMAIN=cocinadominicana.com make scrape-url URL="https://www.cocinadominicana.com/batata-asada"
+# Or directly:
+CRAWL_DOMAIN=cocinadominicana.com uv run python -m core.cli scrape "https://www.cocinadominicana.com/batata-asada"
 ```
 
 #### Crawl Category Page
@@ -263,9 +326,9 @@ python cli.py scrape "https://www.cocinadominicana.com/batata-asada" --output re
 Automatically discover and scrape all articles from a category page:
 
 ```bash
-make scrape-category URL="https://www.cocinadominicana.com/cocina" DEPTH=2
-python cli.py crawl "https://www.cocinadominicana.com/cocina"
-python cli.py crawl "https://www.cocinadominicana.com/cocina" --depth 2 --name cocina
+CRAWL_DOMAIN=cocinadominicana.com make scrape-category URL="https://www.cocinadominicana.com/cocina" DEPTH=2
+# Or directly:
+CRAWL_DOMAIN=cocinadominicana.com uv run python -m core.cli crawl "https://www.cocinadominicana.com/cocina" --depth 2
 ```
 
 #### Scrape Multiple URLs from File
@@ -276,8 +339,7 @@ Create a file with URLs (one per line):
 echo "https://www.cocinadominicana.com/batata-asada" > urls.txt
 echo "https://www.cocinadominicana.com/mangu" >> urls.txt
 
-make scrape-list FILE=urls.txt
-python cli.py scrape-list urls.txt --output batch
+CRAWL_DOMAIN=cocinadominicana.com make scrape-list FILE=urls.txt
 ```
 
 #### Discover URLs with Interactive Menu
@@ -285,93 +347,126 @@ python cli.py scrape-list urls.txt --output batch
 Discover URLs and choose what to do with them through an interactive menu:
 
 ```bash
-make scrape-discover URL="https://www.cocinadominicana.com/cocina"
-python cli.py discover "https://www.cocinadominicana.com/cocina"
+CRAWL_DOMAIN=cocinadominicana.com make scrape-discover URL="https://www.cocinadominicana.com/cocina"
 ```
 
-**Interactive Menu Options:**
-1. **Scrape all URLs now** - Immediately scrape discovered URLs to `scraped_content/<section>/`
-2. **Save URLs to file** - Save URLs to `<section>_urls.txt` or custom file with `--save`
-3. **Nothing (exit)** - Just preview URLs and exit
+#### Process to Plain Text
 
-**Non-Interactive Mode (for scripting):**
+Convert scraped markdown to plain text:
 
 ```bash
-make scrape-discover URL="https://..." SAVE=urls.txt NOINTERACTIVE=1
-python cli.py discover "https://..." --no-interactive --save urls.txt
+CRAWL_DOMAIN=cocinadominicana.com uv run python -m core.cli process
 ```
 
 ### CLI Commands Reference
 
 | Command | Description | Example |
 |---------|-------------|---------|
-| `scrape-all` | Scrape all configured sections | `python cli.py scrape-all` |
-| `scrape <url>` | Scrape single URL | `python cli.py scrape <url>` |
-| `crawl <url>` | Crawl category and scrape articles | `python cli.py crawl <url> --depth 2` |
-| `scrape-list <file>` | Scrape URLs from file | `python cli.py scrape-list urls.txt` |
-| `discover <url>` | Discover URLs with interactive menu | `python cli.py discover <url>` |
-
-### Programmatic Usage
-
-```python
-from scraper import Scraper
-
-scraper = Scraper()
-
-scraper.scrape_all_sections()
-
-scraper.scrape_section("cultura_origenes")
-
-article_data = scraper.scrape_url("https://www.cocinadominicana.com/article-url")
-
-result = scraper.crawl_category(
-    category_url="https://www.cocinadominicana.com/cocina",
-    category_name="cocina",
-    max_depth=2
-)
-
-urls = scraper.auto_discover_urls("https://www.cocinadominicana.com/inicia")
-```
+| `scrape-all` | Scrape all configured sections | `CRAWL_DOMAIN=example.com uv run python -m core.cli scrape-all` |
+| `scrape <url>` | Scrape single URL | `CRAWL_DOMAIN=example.com uv run python -m core.cli scrape <url>` |
+| `crawl <url>` | Crawl category and scrape articles | `CRAWL_DOMAIN=example.com uv run python -m core.cli crawl <url> --depth 2` |
+| `scrape-list <file>` | Scrape URLs from file | `CRAWL_DOMAIN=example.com uv run python -m core.cli scrape-list urls.txt` |
+| `discover <url>` | Discover URLs with interactive menu | `CRAWL_DOMAIN=example.com uv run python -m core.cli discover <url>` |
+| `process` | Process to plain text | `CRAWL_DOMAIN=example.com uv run python -m core.cli process` |
 
 ### Configuration
 
-Edit `config.yaml` to customize scraping behavior:
+The scraper uses a two-level configuration system:
+
+#### Global Configuration (`config.yml`)
+
+Default settings for all sites:
 
 ```yaml
-base_url: "https://www.cocinadominicana.com"
-output_dir: "scraped_content"
-
 filters:
-  include_patterns:
-    - "cocinadominicana\\.com/.*"
   exclude_patterns:
     - "wp-content"
+    - "wp-json"
     - "\\.(jpg|png|gif)$"
 
 crawler:
   max_depth: 2
   delay_seconds: 0.5
   skip_existing: true
+  max_retries: 3
+```
+
+#### Site-Specific Configuration (`sites/{domain}/config.yml`)
+
+Override defaults for specific sites:
+
+```yaml
+base_url: "https://www.example.com"
+output_dir: "scraped_content"
+
+filters:
+  include_patterns:
+    - "example\\.com/.*"
+  exclude_patterns:
+    - "category/excluded"
+
+crawler:
+  max_depth: 3
+  delay_seconds: 1.0
+```
+
+#### Processing Patterns (`sites/{domain}/processing_patterns.yml`)
+
+Site-specific text processing rules:
+
+```yaml
+navigation_patterns:
+  - "Skip to content"
+  - "Main menu"
+
+footer_markers:
+  - "© Copyright"
+  - "All rights reserved"
+```
+
+### Programmatic Usage
+
+```python
+from core.config_loader import load_config
+from core.crawler import Crawler
+from core.processor import ContentProcessor
+
+config = load_config()
+crawler = Crawler(config)
+
+crawler.scrape_all_sections()
+
+article_data = crawler.scrape_url("https://www.example.com/article")
+
+result = crawler.crawl_category(
+    category_url="https://www.example.com/category",
+    category_name="category",
+    max_depth=2
+)
 ```
 
 ## Output Structure
 
 ```
 scraped_content/
-├── cultura_origenes/
-│   ├── article-title.md
-│   ├── article-title.json
-│   └── ...
-├── tradiciones_costumbres/
-├── festividades_celebraciones/
-├── comparaciones/
-├── cocina/
-│   ├── crawl_summary.json
-│   └── ...
-├── custom/
-├── batch/
+├── 0001_cocinadominicana_com_batata-asada.md
+├── 0002_cocinadominicana_com_mangu.md
+├── 0003_example_com_article-title.md
+├── metadata.jsonl
 └── scraping_summary.json
 ```
+
+### Filename Format
+
+Files are named with a global document ID and domain:
+
+```
+{doc_id}_{domain_slug}_{url_slug}.md
+```
+
+Examples:
+- `0001_cocinadominicana_com_batata-asada.md`
+- `0042_example_com_getting-started.md`
 
 ### File Formats
 
@@ -379,10 +474,12 @@ scraped_content/
 
 ```markdown
 ---
+doc_id: 1020
+domain: cocinadominicana.com
 title: "Article Title"
 description: "Article description"
 url: https://www.cocinadominicana.com/article-url
-scraped_at: 2024-10-14T14:15:30.123456
+scraped_at: 2025-12-11T14:15:30.123456
 word_count: 450
 char_count: 2847
 ---
@@ -391,40 +488,12 @@ char_count: 2847
 Article markdown content here...
 ```
 
-**JSON Metadata (`.json`)**
+**Metadata JSONL (`metadata.jsonl`)**
+
+Each line is a JSON object for one article:
 
 ```json
-{
-  "title": "Article Title",
-  "description": "Article description", 
-  "url": "https://www.cocinadominicana.com/article-url",
-  "url_slug": "article_url_slug",
-  "scraped_at": "2024-10-14T14:15:30.123456",
-  "word_count": 450,
-  "char_count": 2847
-}
-```
-
-**Summary Report (`scraping_summary.json`)**
-
-```json
-{
-  "scraping_session": {
-    "start_time": "2024-10-14T14:15:30.123456",
-    "end_time": "2024-10-14T14:45:30.123456", 
-    "duration_seconds": 1800.0,
-    "total_articles_scraped": 127,
-    "total_sections_failed": 0
-  },
-  "sections": {
-    "cultura_origenes": {
-      "name": "Cultura y Orígenes",
-      "url": "https://www.cocinadominicana.com/cultura/herencia",
-      "articles_scraped": 42,
-      "directory": "cultura_origenes"
-    }
-  }
-}
+{"title": "Article Title", "description": "Article description", "url": "https://...", "url_slug": "article-url", "domain": "cocinadominicana.com", "scraped_at": "2025-12-11T14:15:30.123456", "word_count": 450, "char_count": 2847, "doc_id": "1020"}
 ```
 
 ## Performance Tuning
@@ -468,16 +537,16 @@ The scraper implements structured logging with canonical log lines for excellent
 **Session Tracking**
 
 ```
-2024-10-14T14:15:30 [INFO] scraper: firecrawl_initialized api_url="http://localhost:3002"
-2024-10-14T14:15:30 [INFO] scraper: scrape_session_started start_time="2024-10-14T14:15:30" sections_count=4
-2024-10-14T14:45:30 [INFO] scraper: scrape_session_completed duration_seconds=1800 total_articles_scraped=127
+2025-12-11T14:15:30 [INFO] core.crawler: firecrawl_initialized api_url="http://localhost:3002" domain="cocinadominicana.com"
+2025-12-11T14:15:30 [INFO] core.crawler: single_url_scrape_started url="https://..."
+2025-12-11T14:15:31 [INFO] core.crawler: article_scrape_completed url="https://..." title="Recipe Title" word_count=450
 ```
 
 **Performance Monitoring**
 
 ```
-2024-10-14T14:16:15 [INFO] scraper: article_scrape_completed url="https://..." title="Recipe Title" word_count=450 duration_ms=890
-2024-10-14T14:20:30 [INFO] scraper: section_processing_completed section="Cultura y Orígenes" articles_scraped=32 duration_ms=45000
+2025-12-11T14:15:31 [INFO] core.crawler: scrape_success url="https://..." attempt=1
+2025-12-11T14:15:31 [INFO] core.crawler: article_save_completed file_name="1020_cocinadominicana_com_batata-asada.md"
 ```
 
 **Docker Service Logs**
@@ -519,43 +588,52 @@ docker-compose logs -f postgres
 
 ### Code Architecture
 
-The codebase follows Clean Code principles:
+The codebase follows Clean Code principles with a modular structure:
 
-- **Single Responsibility**: Each function has one clear purpose
-- **Function Size**: All functions ≤20 lines
-- **Descriptive Naming**: Self-documenting code with minimal comments
-- **Separation of Concerns**: Clear boundaries between operations
+```
+core/
+├── __init__.py          # Package exports
+├── cli.py               # Command-line interface
+├── config_loader.py     # Configuration management
+├── crawler.py           # Web scraping logic
+└── processor.py         # Post-processing
 
-### Key Components
+sites/
+├── cocinadominicana_com/
+│   ├── config.yml       # Site-specific config
+│   └── processing_patterns.yml  # Text processing rules
+└── README.md            # Site setup guide
 
-**Core Classes**
+templates/
+├── site_config.yml      # Template for new sites
+└── processing_patterns.yml
 
-- `Scraper`: Main scraper orchestration
-- `PerformanceTimer`: Context manager for operation timing
+config.yml               # Global defaults
+```
 
-**Utility Functions**
+### Design Principles
 
-- `setup_canonical_logger()`: Logger configuration
-- `log_canonical()`: Structured logging implementation
-- `create_safe_filename()`: Safe filename generation
-- `save_json_file()`: JSON file operations
+- **Single Responsibility**: Each module has one clear purpose
+- **Configuration-Driven**: Site behavior controlled via YAML
+- **Environment-Driven**: Domain selection via CRAWL_DOMAIN
+- **Separation of Concerns**: Clear boundaries between config, crawling, and processing
+- **Type Safety**: Full type annotations throughout
 
 ### Testing
 
 ```bash
 # Validate syntax
-python3 -m py_compile scraper.py utils.py
+uv run python3 -m py_compile core/*.py
 
-# Test import
-python3 -c "from scraper import Scraper; print('Import successful')"
+# Test environment validation
+env -u CRAWL_DOMAIN uv run python -m core.cli scrape https://example.com
+# Should show error message with available sites
 
-# Dry run (test configuration)
-python3 -c "
-from scraper import Scraper
-scraper = Scraper()
-print(f'Configured for {len(scraper.sections)} sections')
-print(f'Output directory: {scraper.output_dir}')
-"
+# Test with valid domain
+CRAWL_DOMAIN=cocinadominicana.com uv run python -m core.cli --help
+
+# Test scraping single URL
+CRAWL_DOMAIN=cocinadominicana.com uv run python -m core.cli scrape https://www.cocinadominicana.com/batata-asada
 ```
 
 ## Contributing
@@ -609,10 +687,31 @@ ports:
 **Import Errors**
 
 ```
-ModuleNotFoundError: No module named 'firecrawl'
+ModuleNotFoundError: No module named 'yaml'
 ```
 
-**Solution**: Install dependencies with `pip install -r requirements.txt`
+**Solution**: Sync dependencies with `uv sync` or `make setup`
+
+**Missing CRAWL_DOMAIN**
+
+```
+ERROR: CRAWL_DOMAIN environment variable not set
+```
+
+**Solution**: Set the environment variable:
+```bash
+export CRAWL_DOMAIN=cocinadominicana.com
+# Or add to .env file
+echo "CRAWL_DOMAIN=cocinadominicana.com" >> .env
+```
+
+**Invalid Domain**
+
+```
+ERROR: Site configuration not found for domain 'example.com'
+```
+
+**Solution**: Check available sites with `make list-sites` or create new site with `make setup-site DOMAIN=example.com`
 
 **For detailed troubleshooting, see `local-setup.md`**
 

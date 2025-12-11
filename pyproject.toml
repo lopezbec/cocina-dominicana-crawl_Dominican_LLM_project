@@ -17,6 +17,9 @@ dependencies = [
     "wordfreq>=3.1.1",
 ]
 
+[project.scripts]
+cocina-scraper = "core.cli:main"
+
 [project.urls]
 Homepage = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"
 Repository = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"
