@@ -252,7 +252,7 @@ def discover_urls(args):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Dominican Culture Scraper - Flexible web scraping tool using Firecrawl",
+        description="Scraper - Flexible web scraping tool using Firecrawl",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
