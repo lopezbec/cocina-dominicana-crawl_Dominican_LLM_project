@@ -7,6 +7,7 @@ import re
 import json
 from pathlib import Path
 from typing import Dict, Tuple
+from wordfreq import word_frequency
 
 
 def extract_frontmatter(content: str) -> Tuple[Dict, str]:
@@ -150,18 +151,73 @@ def remove_footer_sections(text: str) -> str:
 def remove_excessive_whitespace(text: str) -> str:
     """Clean up whitespace"""
     text = re.sub(r'\[\s*\n*\s*\]', '', text)
-    
+
     text = re.sub(r'\[([^\]]+)\]', r'\1', text)
-    
+
     text = re.sub(r'\n{3,}', '\n\n', text)
     text = re.sub(r' {2,}', ' ', text)
     lines = [line.rstrip() for line in text.split('\n')]
     text = '\n'.join(lines)
-    
+
     return text.strip()
 
 
-def process_markdown_to_plain_text(markdown_content: str) -> Tuple[Dict, str]:
+def is_likely_english_word(word: str, threshold: float = 1e-6) -> bool:
+    """Check if a word is likely English using wordfreq library"""
+    word_lower = word.lower()
+
+    if len(word_lower) <= 2:
+        return False
+
+    en_freq = word_frequency(word_lower, 'en')
+    es_freq = word_frequency(word_lower, 'es')
+
+    if en_freq == 0 and es_freq == 0:
+        return False
+
+    if es_freq >= en_freq * 2:
+        return False
+
+    return en_freq > threshold and en_freq > es_freq
+
+
+def filter_english_words(text: str, preserve_proper_nouns: bool = True) -> str:
+    """Remove English words from Spanish text while preserving Spanish content"""
+    lines = text.split('\n')
+    filtered_lines = []
+
+    for line in lines:
+        if not line.strip():
+            filtered_lines.append(line)
+            continue
+
+        words = re.findall(r'\b[\w\u00C0-\u017F]+\b|\S', line)
+        filtered_words = []
+
+        for word in words:
+            if not re.match(r'\b[\w\u00C0-\u017F]+\b', word):
+                filtered_words.append(word)
+                continue
+
+            if preserve_proper_nouns and word[0].isupper():
+                filtered_words.append(word)
+                continue
+
+            if not is_likely_english_word(word):
+                filtered_words.append(word)
+
+        filtered_line = ' '.join(filtered_words)
+        filtered_line = re.sub(r'\s+([.,;:!?)])', r'\1', filtered_line)
+        filtered_line = re.sub(r'([¿¡(])\s+', r'\1', filtered_line)
+        filtered_line = re.sub(r' {2,}', ' ', filtered_line)
+
+        if filtered_line.strip():
+            filtered_lines.append(filtered_line)
+
+    return '\n'.join(filtered_lines)
+
+
+def process_markdown_to_plain_text(markdown_content: str, filter_english: bool = True) -> Tuple[Dict, str]:
     """Process markdown to plain text, return frontmatter and cleaned content"""
     frontmatter, body = extract_frontmatter(markdown_content)
 
@@ -169,6 +225,9 @@ def process_markdown_to_plain_text(markdown_content: str) -> Tuple[Dict, str]:
     cleaned = clean_markdown_syntax(cleaned)
     cleaned = remove_footer_sections(cleaned)
     cleaned = remove_excessive_whitespace(cleaned)
+
+    if filter_english:
+        cleaned = filter_english_words(cleaned)
 
     return frontmatter, cleaned
 
