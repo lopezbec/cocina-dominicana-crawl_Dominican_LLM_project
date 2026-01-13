@@ -196,7 +196,7 @@ firecrawl-clean:
 	@echo "Firecrawl cleaned."
 
 scrape: check-uv
-	@$(PYTHON) -m core.cli scrape-all
+	@$(PYTHON) -m dominican_llm_scraper scrape-all
 
 scrape-url: check-uv
 	@if [ -z "$(URL)" ]; then \
@@ -204,7 +204,7 @@ scrape-url: check-uv
 		echo "Usage: make scrape-url URL=https://example.com/page"; \
 		exit 1; \
 	fi
-	@$(PYTHON) -m core.cli scrape "$(URL)"
+	@$(PYTHON) -m dominican_llm_scraper scrape "$(URL)"
 
 scrape-category: check-uv
 	@if [ -z "$(URL)" ]; then \
@@ -213,9 +213,9 @@ scrape-category: check-uv
 		exit 1; \
 	fi
 	@if [ -n "$(DEPTH)" ]; then \
-		$(PYTHON) -m core.cli crawl "$(URL)" --depth $(DEPTH); \
+		$(PYTHON) -m dominican_llm_scraper crawl "$(URL)" --depth $(DEPTH); \
 	else \
-		$(PYTHON) -m core.cli crawl "$(URL)"; \
+		$(PYTHON) -m dominican_llm_scraper crawl "$(URL)"; \
 	fi
 
 scrape-list: check-uv
@@ -228,7 +228,7 @@ scrape-list: check-uv
 		echo "Error: File not found: $(FILE)"; \
 		exit 1; \
 	fi
-	@$(PYTHON) -m core.cli scrape-list "$(FILE)"
+	@$(PYTHON) -m dominican_llm_scraper scrape-list "$(FILE)"
 
 scrape-discover: check-uv
 	@if [ -z "$(URL)" ]; then \
@@ -239,20 +239,20 @@ scrape-discover: check-uv
 	fi
 	@if [ -n "$(NOINTERACTIVE)" ]; then \
 		if [ -n "$(SAVE)" ]; then \
-			$(PYTHON) -m core.cli discover "$(URL)" --no-interactive --save "$(SAVE)"; \
+			$(PYTHON) -m dominican_llm_scraper discover "$(URL)" --no-interactive --save "$(SAVE)"; \
 		else \
-			$(PYTHON) -m core.cli discover "$(URL)" --no-interactive; \
+			$(PYTHON) -m dominican_llm_scraper discover "$(URL)" --no-interactive; \
 		fi \
 	else \
-		$(PYTHON) -m core.cli discover "$(URL)"; \
+		$(PYTHON) -m dominican_llm_scraper discover "$(URL)"; \
 	fi
 
 process: check-uv
-	@if [ ! -d scraped_content ]; then \
-		echo "Error: scraped_content directory not found. Run scraping commands first."; \
+	@if [ ! -d data/raw ]; then \
+		echo "Error: data/raw directory not found. Run scraping commands first."; \
 		exit 1; \
 	fi
-	@$(PYTHON) -m core.cli process
+	@$(PYTHON) -m dominican_llm_scraper process
 
 setup-site:
 	@if [ -z "$(DOMAIN)" ]; then \
@@ -262,19 +262,19 @@ setup-site:
 	fi
 	@echo "Creating site configuration for $(DOMAIN)..."
 	@DOMAIN_DIR=$$(echo "$(DOMAIN)" | sed 's/\./_/g'); \
-	if [ -d "sites/$$DOMAIN_DIR" ]; then \
+	if [ -d "config/sites/$$DOMAIN_DIR" ]; then \
 		echo "Error: Site $$DOMAIN_DIR already exists"; \
 		exit 1; \
 	fi; \
-	mkdir -p sites/$$DOMAIN_DIR; \
-	sed "s/DOMAIN_PLACEHOLDER/$(DOMAIN)/g" templates/site_config.yml > sites/$$DOMAIN_DIR/config.yml; \
-	cp templates/processing_patterns.yml sites/$$DOMAIN_DIR/; \
+	mkdir -p config/sites/$$DOMAIN_DIR; \
+	sed "s/DOMAIN_PLACEHOLDER/$(DOMAIN)/g" templates/site_config.yml > config/sites/$$DOMAIN_DIR/config.yml; \
+	cp templates/processing_patterns.yml config/sites/$$DOMAIN_DIR/; \
 	echo ""; \
-	echo "  [+] Site created: sites/$$DOMAIN_DIR/"; \
-	echo "  [!] Edit sites/$$DOMAIN_DIR/config.yml before crawling"; \
+	echo "  [+] Site created: config/sites/$$DOMAIN_DIR/"; \
+	echo "  [!] Edit config/sites/$$DOMAIN_DIR/config.yml before crawling"; \
 	echo ""; \
 	echo "  Next steps:"; \
-	echo "    1. Edit sites/$$DOMAIN_DIR/config.yml"; \
+	echo "    1. Edit config/sites/$$DOMAIN_DIR/config.yml"; \
 	echo "    2. CRAWL_DOMAIN=$(DOMAIN) make scrape"; \
 	echo ""
 
@@ -282,7 +282,7 @@ list-sites:
 	@echo ""
 	@echo "  Available Sites:"
 	@echo "  ────────────────────────────────────────────"
-	@ls -1 sites/ 2>/dev/null | grep -v README | grep -v __pycache__ | sed 's/_/./g' | sed 's/^/    /' || echo "    No sites configured"
+	@ls -1 config/sites/ 2>/dev/null | grep -v README | grep -v __pycache__ | sed 's/_/./g' | sed 's/^/    /' || echo "    No sites configured"
 	@echo ""
 
 test:
@@ -298,10 +298,10 @@ test:
 
 clean:
 	@echo "Cleaning scraped content and logs..."
-	@rm -rf scraped_content/
-	@rm -rf scrapped_plain_text/
-	@rm -f *.log
-	@rm -f progress.json
+	@rm -rf data/raw/*
+	@rm -rf data/processed/*
+	@rm -rf data/logs/*
+	@echo "Cleaned data directories. Structure preserved."
 	@echo "Clean complete."
 
 clean-all: clean firecrawl-clean

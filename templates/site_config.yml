@@ -1,5 +1,4 @@
 domain: "DOMAIN_PLACEHOLDER"
-base_url: "https://DOMAIN_PLACEHOLDER"
 
 filters:
   include_patterns:

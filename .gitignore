@@ -1,78 +1,54 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-pip-wheel-metadata/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
 # Virtual environments
+.venv/
 venv/
-env/
-ENV/
-env.bak/
-venv.bak/
+__pycache__/
+*.pyc
+*.pyo
+.python-version
 
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+# UV
+uv.lock
 
-# Scraping outputs
-topics/
-*.log
-progress.json
-scraped*/
-scrapped*/
-test_output/
-
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Environment variables
+.env
+.env.local
 
-# Temporary files
-*.tmp
-*.temp
+# Runtime data - keep structure, ignore content
+data/raw/*
+!data/raw/.gitkeep
+data/processed/*
+!data/processed/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
 
-# Backup files
-*.bak
-*.backup
+# Build artifacts
+dist/
+build/
+*.egg-info/
 
-# Docker volumes and data
-docker-compose.override.yml
-postgres-data/
-redis-data/
-
-# Firecrawl local installation
+# External dependencies
 firecrawl-local/
+
+# Cache
+.ruff_cache/
+.pytest_cache/
+
+# Backups (from refactoring)
+*.backup/
+scraped_content/
+scraped_content.back/
+scrapped_plain_text.back/
+logs/
+sites/
+
+# Legacy files (root level only)
+/core/
+utils.py
+config.yml
+scraping.log

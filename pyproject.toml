@@ -1,24 +1,40 @@
 [project]
-name = "cocina-dominicana-scraper"
-version = "0.1.0"
-description = "Scraper - Production-ready scraper using Firecrawl"
+name = "dominican-llm-scraper"
+version = "0.2.0"
+description = "Web scraper for collecting Dominican Spanish dialect data for LLM training"
 readme = { file = "readme.markdown", content-type = "text/markdown" }
 requires-python = ">=3.9"
 license = { text = "MIT" }
-authors = [
-    { name = "Cristian de la Hoz" }
+authors = [{ name = "Cristian de la Hoz" }]
+keywords = [
+  "web-scraping",
+  "dominican-spanish",
+  "llm-training-data",
+  "dialect",
+  "corpus-building",
+  "nlp",
 ]
-keywords = ["web-scraping", "dominican-republic", "culinary", "firecrawl", "heritage"]
 
 dependencies = [
-    "firecrawl>=4.10.4",
-    "python-dotenv>=1.2.1",
-    "pyyaml>=6.0.3",
-    "wordfreq>=3.1.1",
+  "firecrawl>=4.10.4",
+  "python-dotenv>=1.2.1",
+  "pyyaml>=6.0.3",
+  "ruff>=0.14.9",
+  "wordfreq>=3.1.1",
+  "colorlog>=6.8.2",
+  "python-json-logger>=2.0.7",
 ]
 
-[project.scripts]
-cocina-scraper = "core.cli:main"
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 120
+src = ["src"]
+
+[tool.uv]
+package = true
 
 [project.urls]
 Homepage = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"
@@ -26,4 +42,4 @@ Repository = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_
 Issues = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project/issues"
 
 [dependency-groups]
-dev = []
+dev = ["pytest>=7.0", "pytest-cov>=4.0"]
