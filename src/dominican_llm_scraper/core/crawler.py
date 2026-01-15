@@ -516,7 +516,7 @@ class Crawler:
         failed_count = 0
         skipped_count = 0
 
-        delay = self.config.crawler.get("delay_seconds", 0.5) if self.config else 0.5
+        delay = self.config.crawler.get("delay_seconds", 5) if self.config else 5
 
         for i, url in enumerate(article_urls, 1):
             if _skip_existing and self._check_existing_file(url):

@@ -2,11 +2,10 @@ output_dir: data/raw
 plaintext_output_dir: data/processed
 crawler:
   max_depth: 2
-  delay_seconds: 0.5
+  delay_seconds: 5
   skip_existing: true
   max_retries: 3
   base_retry_delay: 2
-  domain_validation_timeout: 5
 filters:
   exclude_patterns:
   - wp-content

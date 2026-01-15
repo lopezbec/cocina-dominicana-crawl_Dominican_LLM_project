@@ -20,12 +20,7 @@ uv.lock
 .env.local
 
 # Runtime data - keep structure, ignore content
-data/raw/*
-!data/raw/.gitkeep
-data/processed/*
-!data/processed/.gitkeep
-data/logs/*
-!data/logs/.gitkeep
+data/**
 
 # Build artifacts
 dist/
