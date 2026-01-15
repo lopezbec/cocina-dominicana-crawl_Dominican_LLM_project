@@ -32,9 +32,6 @@ dist/
 build/
 *.egg-info/
 
-# External dependencies
-firecrawl-local/
-
 # Cache
 .ruff_cache/
 .pytest_cache/
