@@ -113,8 +113,9 @@ class Crawler:
         for pattern_index, pattern in enumerate(patterns, 1):
             matches = re.findall(pattern, markdown_content)
             for match in matches:
-                # Patterns now return simple strings, not tuples
-                url = match
+                # Extract URL from match (handle both tuple and string)
+                # If multiple groups in regex, re.findall returns tuple; we want first group
+                url = match[0] if isinstance(match, tuple) else match
 
                 # VALIDATION - LOG WITH DETAILED TRACKING
                 if not self._is_valid_url(url):
