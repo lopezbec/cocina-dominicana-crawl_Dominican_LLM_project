@@ -1,7 +1,6 @@
 import os
 import re
 import yaml
-import requests
 from pathlib import Path
 from typing import Dict, Any, Optional
 from urllib.parse import urlparse
@@ -77,87 +76,6 @@ def validate_crawl_domain() -> str:
     return domain
 
 
-def validate_domain_reachable(domain: str, timeout: int = 5) -> None:
-    """
-    Validate that the domain is reachable via HTTPS.
-    Fails fast with clear error if domain is unreachable.
-
-    Args:
-        domain: The domain to validate (e.g., 'www.example.com')
-        timeout: Request timeout in seconds
-
-    Raises:
-        RuntimeError: If domain is unreachable (404, timeout, connection error, etc.)
-    """
-    base_url = f"https://{domain}"
-
-    # Use a proper user-agent to avoid being blocked
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
-
-    try:
-        # Try HEAD request first (faster)
-        response = requests.head(base_url, timeout=timeout, allow_redirects=True, headers=headers)
-
-        # If HEAD returns 403 or 405 (Method Not Allowed), try GET
-        if response.status_code in [403, 405]:
-            response = requests.get(base_url, timeout=timeout, allow_redirects=True, headers=headers, stream=True)
-            # Close the connection immediately, we don't need the body
-            response.close()
-
-        if response.status_code >= 400:
-            raise RuntimeError(
-                f"\n{'=' * 70}\n"
-                f"ERROR: Domain validation failed\n"
-                f"{'=' * 70}\n\n"
-                f"URL: {base_url}\n"
-                f"HTTP Status: {response.status_code}\n\n"
-                f"The domain returned an error. Please check:\n"
-                f"  1. Domain is correct: CRAWL_DOMAIN={domain}\n"
-                f"  2. Domain is accessible and online\n\n"
-                f"{'=' * 70}\n"
-            )
-
-    except requests.exceptions.Timeout:
-        raise RuntimeError(
-            f"\n{'=' * 70}\n"
-            f"ERROR: Domain validation failed\n"
-            f"{'=' * 70}\n\n"
-            f"URL: {base_url}\n"
-            f"Error: Request timeout after {timeout} seconds\n\n"
-            f"The domain is not responding. Please check:\n"
-            f"  1. Domain is correct: CRAWL_DOMAIN={domain}\n"
-            f"  2. Your internet connection\n"
-            f"  3. Domain is online and accessible\n\n"
-            f"{'=' * 70}\n"
-        )
-
-    except requests.exceptions.ConnectionError:
-        raise RuntimeError(
-            f"\n{'=' * 70}\n"
-            f"ERROR: Domain validation failed\n"
-            f"{'=' * 70}\n\n"
-            f"URL: {base_url}\n"
-            f"Error: Connection failed\n\n"
-            f"Cannot reach the domain. Please check:\n"
-            f"  1. Domain is correct: CRAWL_DOMAIN={domain}\n"
-            f"  2. Domain exists (check for typos)\n"
-            f"  3. Your internet connection\n\n"
-            f"{'=' * 70}\n"
-        )
-
-    except requests.exceptions.RequestException as e:
-        raise RuntimeError(
-            f"\n{'=' * 70}\n"
-            f"ERROR: Domain validation failed\n"
-            f"{'=' * 70}\n\n"
-            f"URL: {base_url}\n"
-            f"Error: {str(e)}\n\n"
-            f"{'=' * 70}\n"
-        )
-
-
 def generate_url_patterns(base_url: str) -> list[str]:
     """Generate regex patterns to extract URLs from markdown.
 
@@ -203,12 +121,6 @@ def load_config() -> SiteConfig:
             global_config = yaml.safe_load(f) or {}
     else:
         global_config = {}
-
-    # Get timeout from global config (default: 5 seconds)
-    domain_validation_timeout = global_config.get("crawler", {}).get("domain_validation_timeout", 5)
-
-    # Validate domain is reachable (fail fast)
-    validate_domain_reachable(domain, timeout=domain_validation_timeout)
 
     domain_dir = get_domain_directory(domain)
     site_config_path = Path("config/sites") / domain_dir / "config.yml"
