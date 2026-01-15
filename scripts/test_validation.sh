@@ -10,8 +10,8 @@ echo ""
 
 # Step 1: Clean up existing data
 echo "Step 1: Cleaning up existing data..."
-rm -rf scraped_content/
-rm -rf scrapped_plain_text/
+rm -rf data/raw/*
+rm -rf data/processed/*
 rm -f malformed_urls.log
 echo "✓ Cleaned up"
 echo ""
@@ -45,14 +45,14 @@ else
 fi
 
 echo ""
-if [ -d scraped_content ]; then
-    SCRAPED_COUNT=$(find scraped_content -name "*.md" | wc -l)
+if [ -d data/raw ]; then
+    SCRAPED_COUNT=$(find data/raw -name "*.md" | wc -l)
     echo "✓ Total articles scraped: $SCRAPED_COUNT"
     echo ""
     echo "Sample filenames:"
-    ls scraped_content/*.md | head -5
+    ls data/raw/*.md | head -5
 else
-    echo "✗ No scraped_content directory found"
+    echo "✗ No data/raw directory found"
 fi
 
 echo ""
