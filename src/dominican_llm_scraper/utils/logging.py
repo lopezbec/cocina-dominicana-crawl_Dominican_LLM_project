@@ -1,5 +1,4 @@
 import logging
-from typing import Dict, Any
 
 from dominican_llm_scraper.core.log_context import get_all_context_fields
 
