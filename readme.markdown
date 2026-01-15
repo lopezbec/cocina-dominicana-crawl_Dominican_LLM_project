@@ -53,13 +53,14 @@ graph TB
 | pyyaml | Latest | Configuration file parsing |
 
 ### Local Firecrawl Stack
-The application runs Firecrawl locally via Docker:
+The application runs Firecrawl locally via Docker using pre-built images:
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| Firecrawl API | 3002 | Web scraping engine |
-| Redis | 6379 | Job queue management |
-| PostgreSQL | 5432 | Job state persistence |
+| Service | Port | Purpose | Image Source |
+|---------|------|---------|--------------|
+| Firecrawl API | 3002 | Web scraping engine | ghcr.io/firecrawl/firecrawl:latest |
+| Playwright | - | Browser automation | ghcr.io/firecrawl/playwright-service:latest |
+| Redis | 6379 | Job queue management | redis:alpine |
+| PostgreSQL | 5432 | Job state persistence | Built locally (custom schema) |
 
 ### Compatibility Matrix
 
@@ -136,8 +137,9 @@ make setup
 
 This command will:
 - Sync Python dependencies using uv
-- Clone and initialize Firecrawl
-- Build Docker images (5-10 minutes first time)
+- Initialize Firecrawl directory structure
+- Pull pre-built Docker images
+- Build PostgreSQL service (~30 seconds)
 - Start all services (API, Redis, PostgreSQL, Playwright)
 
 #### Step 4: Configure Environment
@@ -500,7 +502,7 @@ Each line is a JSON object for one article:
 
 ### Worker Configuration
 
-Edit `firecrawl.env` to adjust scraping speed:
+Edit `firecrawl/.env` to adjust scraping speed:
 
 ```bash
 NUM_WORKERS_PER_QUEUE=8
@@ -515,7 +517,7 @@ NUM_WORKERS_PER_QUEUE=8
 
 After changes:
 ```bash
-docker-compose restart firecrawl-api
+cd firecrawl && docker-compose restart firecrawl-api
 ```
 
 ### Performance Comparison
@@ -525,7 +527,7 @@ docker-compose restart firecrawl-api
 | Rate Limits | Yes (strict) | No |
 | Cost | Paid/Limited free | Free |
 | Speed per article | ~3 seconds | ~0.5 seconds |
-| Setup time | Instant | 5 minutes |
+| Setup time | Instant | ~1 minute |
 | Control | Limited | Full |
 
 ## Logging and Monitoring
@@ -552,11 +554,11 @@ The scraper implements structured logging with canonical log lines for excellent
 **Docker Service Logs**
 
 ```bash
-docker-compose logs -f firecrawl-api
+cd firecrawl && docker-compose logs -f firecrawl-api
 
-docker-compose logs -f redis
+cd firecrawl && docker-compose logs -f redis
 
-docker-compose logs -f postgres
+cd firecrawl && docker-compose logs -f postgres
 ```
 
 ### Log Files
@@ -663,9 +665,9 @@ git commit -m "feat: add new scraping section
 **Services Won't Start**
 
 ```bash
-docker-compose logs -f
+cd firecrawl && docker-compose logs -f
 
-docker-compose down -v && docker-compose up -d
+cd firecrawl && docker-compose down -v && docker-compose up -d
 ```
 
 **API Not Responding**
@@ -673,12 +675,12 @@ docker-compose down -v && docker-compose up -d
 ```bash
 curl http://localhost:3002/test
 
-docker-compose restart firecrawl-api
+cd firecrawl && docker-compose restart firecrawl-api
 ```
 
 **Port Already in Use**
 
-Edit `docker-compose.yml` and change port mappings:
+Edit `firecrawl/docker-compose.yml` and change port mappings:
 ```yaml
 ports:
   - "3003:3002"
