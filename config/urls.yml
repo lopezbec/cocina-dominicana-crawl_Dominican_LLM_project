@@ -364,3 +364,68 @@ urls:
   name: PUCMM E-Libros Dominicanos
   processed: true
   max_depth: 2
+- url: https://www.gob.do
+  domain: gob.do
+  name: Portal Gobierno Central
+  processed: true
+  max_depth: 2
+- url: https://ogtic.gob.do
+  domain: ogtic.gob.do
+  name: Catálogo Digital de Servicios
+  processed: true
+  max_depth: 2
+- url: https://minpre.gob.do
+  domain: minpre.gob.do
+  name: Presidencia de la República
+  processed: true
+  max_depth: 2
+- url: https://one.gob.do
+  domain: one.gob.do
+  name: Oficina Nacional de Estadística
+  processed: false
+  max_depth: 2
+- url: https://economia.gob.do
+  domain: economia.gob.do
+  name: Ministerio de Economía
+  processed: false
+  max_depth: 2
+- url: https://ministeriodeeducacion.gob.do
+  domain: ministeriodeeducacion.gob.do
+  name: Ministerio de Educación
+  processed: false
+  max_depth: 2
+- url: https://mirex.gob.do
+  domain: mirex.gob.do
+  name: Ministerio de Relaciones Exteriores
+  processed: false
+  max_depth: 2
+- url: https://cultura.gob.do
+  domain: cultura.gob.do
+  name: Ministerio de Cultura
+  processed: false
+  max_depth: 2
+- url: https://mitur.gob.do
+  domain: mitur.gob.do
+  name: Ministerio de Turismo
+  processed: false
+  max_depth: 2
+- url: https://dgcp.gob.do
+  domain: dgcp.gob.do
+  name: Presupuesto y Contrataciones
+  processed: false
+  max_depth: 2
+- url: https://bancentral.gov.do
+  domain: bancentral.gov.do
+  name: Banco Central
+  processed: false
+  max_depth: 2
+- url: https://datos.gob.do
+  domain: datos.gob.do
+  name: Portal Nacional de Datos Abiertos
+  processed: false
+  max_depth: 2
+- url: https://saip.gob.do
+  domain: saip.gob.do
+  name: Portal de Transparencia
+  processed: false
+  max_depth: 2
