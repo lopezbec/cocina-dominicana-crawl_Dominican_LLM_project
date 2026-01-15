@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -7,15 +8,14 @@ from dominican_llm_scraper.core.config_loader import (
     load_urls_config,
     load_config,
     update_url_processed_status,
-    get_domain_from_url,
 )
 from dominican_llm_scraper.core.crawler import Crawler
-from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
+from dominican_llm_scraper.utils import log_canonical, setup_logging
 
 
 def scrape_command(args):
     """Scrape URLs from config or command line arguments."""
-    logger = setup_canonical_logger(__name__)
+    logger = logging.getLogger(__name__)
 
     # Determine URLs to scrape
     if args.urls:
@@ -203,8 +203,6 @@ def process_to_plaintext(args):
 
 
 def main():
-    from dominican_llm_scraper.core.logging_config import setup_logging
-
     # Initialize logging FIRST, before any other imports or operations
     setup_logging()
 

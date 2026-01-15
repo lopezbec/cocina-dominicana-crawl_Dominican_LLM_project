@@ -1,18 +1,16 @@
-from firecrawl import Firecrawl
+import json
+import logging
 import os
 import re
 import time
-import json
-from pathlib import Path
 from datetime import datetime
-from typing import List, Dict, Optional, Any, Set
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
-from dominican_llm_scraper.utils import (
-    setup_canonical_logger,
-    log_canonical,
-    create_safe_filename,
-)
-from dominican_llm_scraper.core.log_context import LogContext
+
+from firecrawl import Firecrawl
+
+from dominican_llm_scraper.utils import LogContext, create_safe_filename, log_canonical
 
 
 class Crawler:
@@ -22,7 +20,7 @@ class Crawler:
         Args:
             config: Optional SiteConfig. If None, uses global config for common settings.
         """
-        self.logger = setup_canonical_logger(__name__)
+        self.logger = logging.getLogger(__name__)
         self.config = config
         self.api_url = os.getenv("FIRECRAWL_API_URL", "http://localhost:3002")
         self.firecrawl = Firecrawl(api_url=self.api_url)
