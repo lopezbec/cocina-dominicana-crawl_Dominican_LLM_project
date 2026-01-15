@@ -1,262 +1,140 @@
-.PHONY: help setup install check-uv firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
-        firecrawl-restart firecrawl-status firecrawl-logs firecrawl-clean \
-        scrape scrape-url scrape-file scrape-force process test clean clean-all \
-        check-docker check-python uv-add uv-remove uv-sync uv-lock uv-outdated setup-site list-sites
+.PHONY: help setup install firecrawl-start firecrawl-stop firecrawl-restart \
+        firecrawl-status firecrawl-logs firecrawl-test scrape scrape-url \
+        scrape-force process clean
 
 .DEFAULT_GOAL := help
 
+# Variables
 PYTHON := uv run python
 UV := uv
 FIRECRAWL_DIR := firecrawl
 DOCKER_COMPOSE := docker compose
-VENV := .venv
-UV_INSTALL_URL := https://astral.sh/uv/install.sh
 
 help:
 	@echo ""
-	@echo "  ╔═══════════════════════════════════════════════════════════════════════╗"
-	@echo "  ║                                                                       ║"
-	@echo "  ║   ██████╗ ██████╗  ██████╗██╗███╗   ██╗ █████╗     ██████╗ ██████╗    ║"
-	@echo "  ║  ██╔════╝██╔═══██╗██╔════╝██║████╗  ██║██╔══██╗    ██╔══██╗██╔══██╗   ║"
-	@echo "  ║  ██║     ██║   ██║██║     ██║██╔██╗ ██║███████║    ██║  ██║██████╔╝   ║"
-	@echo "  ║  ██║     ██║   ██║██║     ██║██║╚██╗██║██╔══██║    ██║  ██║██╔══██╗   ║"
-	@echo "  ║  ╚██████╗╚██████╔╝╚██████╗██║██║ ╚████║██║  ██║    ██████╔╝██║  ██║   ║"
-	@echo "  ║   ╚═════╝ ╚═════╝  ╚═════╝╚═╝╚═╝  ╚═══╝╚═╝  ╚═╝    ╚═════╝ ╚═╝  ╚═╝   ║"
-	@echo "  ║                                                                       ║"
-	@echo "  ║              Multi-Site Web Scraper with Firecrawl                    ║"
-	@echo "  ║                  Local Firecrawl + Python3                            ║"
-	@echo "  ║                                                                       ║"
-	@echo "  ╚═══════════════════════════════════════════════════════════════════════╝"
+	@echo "  ╔═════════════════════════════════════════════════════════════════════════════════════════════════╗"
+	@echo "  ║                                                                                                 ║"
+	@echo "  ║                                                                                                 ║"
+	@echo "  ║                                                                                                 ║"
+	@echo "  ║     ██╗     ██╗     ███╗   ███╗    ███████╗ ██████╗██████╗  █████╗ ██████╗ ███████╗██████╗      ║"
+	@echo "  ║     ██║     ██║     ████╗ ████║    ██╔════╝██╔════╝██╔══██╗██╔══██╗██╔══██╗██╔════╝██╔══██╗     ║"
+	@echo "  ║     ██║     ██║     ██╔████╔██║    ███████╗██║     ██████╔╝███████║██████╔╝█████╗  ██████╔╝     ║"
+	@echo "  ║     ██║     ██║     ██║╚██╔╝██║    ╚════██║██║     ██╔══██╗██╔══██║██╔═══╝ ██╔══╝  ██╔══██╗     ║"
+	@echo "  ║     ███████╗███████╗██║ ╚═╝ ██║    ███████║╚██████╗██║  ██║██║  ██║██║     ███████╗██║  ██║     ║"
+	@echo "  ║     ╚══════╝╚══════╝╚═╝     ╚═╝    ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝     ╚══════╝╚═╝  ╚═╝     ║"
+	@echo "  ║                                                                                                 ║"
+	@echo "  ║                                                                                                 ║"
+	@echo "  ╚═════════════════════════════════════════════════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "  SETUP COMMANDS"
-	@echo "  ------------------------------------------------------------"
-	@echo "    make setup              Complete first-time setup (install + firecrawl)"
-	@echo "    make install            Install Python dependencies"
-	@echo "    make firecrawl-init     Initialize Firecrawl"
-	@echo "    make setup-site DOMAIN=<domain>  Create new site configuration"
-	@echo "    make list-sites         List available sites"
+	@echo "  SETUP"
+	@echo "    make setup                    First-time setup (install + start firecrawl)"
+	@echo "    make install                  Install Python dependencies"
 	@echo ""
-	@echo "  FIRECRAWL MANAGEMENT"
-	@echo "  ------------------------------------------------------------"
-	@echo "    make firecrawl-build    Build custom Postgres image (~30 sec)"
-	@echo "    make firecrawl-start    Start Firecrawl services"
-	@echo "    make firecrawl-stop     Stop Firecrawl services"
-	@echo "    make firecrawl-restart  Restart all services"
-	@echo "    make firecrawl-status   Show service status"
-	@echo "    make firecrawl-logs     Follow API logs"
+	@echo "  FIRECRAWL"
+	@echo "    make firecrawl-start          Start Firecrawl services"
+	@echo "    make firecrawl-stop           Stop Firecrawl services"
+	@echo "    make firecrawl-restart        Restart services"
+	@echo "    make firecrawl-status         Show service status"
+	@echo "    make firecrawl-logs           Follow API logs"
+	@echo "    make firecrawl-test           Test Firecrawl endpoint"
 	@echo ""
-	@echo "  SCRAPING COMMANDS"
-	@echo "  ------------------------------------------------------------"
-	@echo "    make scrape                    Scrape all unprocessed URLs from config/urls.yml"
-	@echo "    make scrape-url URL=<url>      Scrape specific URL with discovery"
-	@echo "    make scrape-file FILE=<file>   Scrape from custom YAML file"
-	@echo "    make scrape-force              Reprocess all URLs (ignores processed status)"
-	@echo "    make test                      Test Firecrawl endpoint"
+	@echo "  SCRAPING"
+	@echo "    make scrape                   Scrape unprocessed URLs from config/urls.yml"
+	@echo "    make scrape-url URL=<url>     Scrape specific URL"
+	@echo "    make scrape-force             Reprocess all URLs (ignore processed status)"
 	@echo ""
-	@echo "  PROCESSING COMMANDS"
-	@echo "  ------------------------------------------------------------"
-	@echo "    make process                   Process markdown to plain text"
-	@echo "    make clean                     Remove scraped content and logs"
-	@echo "    make clean-all                 Remove all generated files including Firecrawl"
+	@echo "  PROCESSING"
+	@echo "    make process                  Convert markdown to plaintext"
 	@echo ""
-	@echo "  CHECKS"
-	@echo "  ------------------------------------------------------------"
-	@echo "    make check-docker       Verify Docker is installed and running"
-	@echo "    make check-python       Verify Python installation"
-	@echo "    make check-uv           Verify UV installation (auto-install on macOS/Linux)"
+	@echo "  CLEANUP"
+	@echo "    make clean                    Remove Firecrawl containers and volumes"
 	@echo ""
-	@echo "  UV PACKAGE MANAGEMENT"
-	@echo "  ------------------------------------------------------------"
-	@echo "    make uv-add PKG=<name>      Add a package"
-	@echo "    make uv-remove PKG=<name>   Remove a package"
-	@echo "    make uv-sync                Sync dependencies from pyproject.toml"
-	@echo "    make uv-lock                Update lockfile"
-	@echo "    make uv-outdated            Check for outdated packages"
+	@echo "  DIRECT CLI USAGE"
+	@echo "    uv run python -m dominican_llm_scraper scrape [urls...]"
+	@echo "    uv run python -m dominican_llm_scraper scrape --urls-file <file>"
+	@echo "    uv run python -m dominican_llm_scraper process"
 	@echo ""
 
-setup: check-docker check-uv check-python install firecrawl-init firecrawl-build firecrawl-start
+# Setup Commands
+setup: install firecrawl-start
 	@echo ""
-	@echo "  +-----------------------------------------------------------+"
-	@echo "  |                                                           |"
-	@echo "  |                    SETUP COMPLETE                         |"
-	@echo "  |                                                           |"
-	@echo "  |  Next steps:                                              |"
-	@echo "  |    make test     - Verify Firecrawl is working            |"
-	@echo "  |    make scrape   - Start scraping Dominican recipes       |"
-	@echo "  |                                                           |"
-	@echo "  +-----------------------------------------------------------+"
+	@echo "✓ Setup complete"
+	@echo "  Next steps:"
+	@echo "    make firecrawl-test    - Verify Firecrawl"
+	@echo "    make scrape            - Start scraping"
 	@echo ""
 
-install: check-uv check-python
+install:
+	@if ! command -v uv > /dev/null 2>&1; then \
+		echo ""; \
+		echo "Error: uv not found"; \
+		echo "Install from: https://docs.astral.sh/uv/"; \
+		echo ""; \
+		exit 1; \
+	fi
 	@if [ ! -f pyproject.toml ]; then \
 		echo ""; \
-		echo "  [x] Error: pyproject.toml not found"; \
-		echo "  Run 'uv init' to create one or restore from backup"; \
+		echo "Error: pyproject.toml not found"; \
+		echo "Run from project root directory"; \
 		echo ""; \
 		exit 1; \
 	fi
 	@echo ""
-	@echo "  Installing Python dependencies with UV..."
-	@echo "  ------------------------------------------------------------"
-	@echo ""
-	@echo "  Creating virtual environment and syncing dependencies..."
+	@echo "Installing Python dependencies..."
 	@$(UV) sync
+	@echo "✓ Dependencies installed"
 	@echo ""
-	@echo "  [+] Dependencies installed successfully"
-	@echo ""
 
-firecrawl-init:
-	@if [ -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Firecrawl directory already exists. Skipping initialization."; \
-	else \
-		echo "Initializing Firecrawl..."; \
-		echo "Firecrawl initialized successfully."; \
-		echo ""; \
-		echo "Note: Firecrawl uses pre-built Docker images."; \
-		echo "Only the custom Postgres image needs to be built."; \
-	fi
-
-firecrawl-build:
-	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Error: Firecrawl not initialized. Run 'make firecrawl-init' first."; \
-		exit 1; \
-	fi
-	@echo "Building custom Postgres image..."
-	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) build nuq-postgres
-	@echo "Build complete."
-
+# Firecrawl Management
 firecrawl-start:
 	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Error: Firecrawl not initialized. Run 'make firecrawl-init' first."; \
+		echo ""; \
+		echo "Error: Firecrawl directory not found at $(FIRECRAWL_DIR)/"; \
+		echo "Ensure firecrawl/ exists with docker-compose.yml"; \
+		echo ""; \
 		exit 1; \
 	fi
-	@echo "Pulling latest Firecrawl images..."
-	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) pull api playwright-service
 	@echo "Starting Firecrawl services..."
 	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) up -d
-	@echo "Waiting for services to be ready..."
-	@sleep 10
-	@echo ""
-	@echo "  ╔═══════════════════════════════════════════════════════════╗"
-	@echo "  ║                                                           ║"
-	@echo "  ║              FIRECRAWL SERVICES RUNNING                   ║"
-	@echo "  ║                                                           ║"
-	@echo "  ║  API:        http://localhost:3002                        ║"
-	@echo "  ║  PostgreSQL: localhost:5432                               ║"
-	@echo "  ║  Redis:      localhost:6379                               ║"
-	@echo "  ║                                                           ║"
-	@echo "  ║  Commands:                                                ║"
-	@echo "  ║    make test              - Test the endpoint             ║"
-	@echo "  ║    make firecrawl-logs    - View logs                     ║"
-	@echo "  ║    make firecrawl-status  - Check status                  ║"
-	@echo "  ║    make firecrawl-stop    - Stop services                 ║"
-	@echo "  ║                                                           ║"
-	@echo "  ╚═══════════════════════════════════════════════════════════╝"
-	@echo ""
+	@echo "✓ Firecrawl started at http://localhost:3002"
+	@echo "  Run 'make firecrawl-test' to verify endpoint"
 
 firecrawl-stop:
 	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Error: Firecrawl directory not found."; \
+		echo "Error: Firecrawl directory not found"; \
 		exit 1; \
 	fi
 	@echo "Stopping Firecrawl services..."
-	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) down
-	@echo "Services stopped."
+	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) stop
+	@echo "✓ Services stopped"
 
-firecrawl-restart: firecrawl-stop firecrawl-start
-	@echo "Firecrawl restarted."
+firecrawl-restart:
+	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
+		echo "Error: Firecrawl directory not found"; \
+		exit 1; \
+	fi
+	@echo "Restarting Firecrawl services..."
+	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) restart
+	@echo "✓ Services restarted"
 
 firecrawl-status:
 	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Error: Firecrawl directory not found."; \
+		echo "Error: Firecrawl directory not found"; \
 		exit 1; \
 	fi
 	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) ps
 
 firecrawl-logs:
 	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Error: Firecrawl directory not found."; \
+		echo "Error: Firecrawl directory not found"; \
 		exit 1; \
 	fi
 	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) logs -f api
 
-firecrawl-clean:
-	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Error: Firecrawl directory not found."; \
-		exit 1; \
-	fi
-	@echo "Removing Firecrawl containers and volumes..."
-	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) down -v
-	@echo "Firecrawl cleaned."
-
-scrape: check-uv
-	@$(PYTHON) -m dominican_llm_scraper scrape
-
-scrape-url: check-uv
-	@if [ -z "$(URL)" ]; then \
-		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-url URL=https://example.com/page"; \
-		exit 1; \
-	fi
-	@$(PYTHON) -m dominican_llm_scraper scrape "$(URL)"
-
-scrape-file: check-uv
-	@if [ -z "$(FILE)" ]; then \
-		echo "Error: FILE parameter required"; \
-		echo "Usage: make scrape-file FILE=urls.yml"; \
-		exit 1; \
-	fi
-	@if [ ! -f "$(FILE)" ]; then \
-		echo "Error: File not found: $(FILE)"; \
-		exit 1; \
-	fi
-	@$(PYTHON) -m dominican_llm_scraper scrape --urls-file "$(FILE)"
-
-scrape-force: check-uv
-	@$(PYTHON) -m dominican_llm_scraper scrape --force
-
-process: check-uv
-	@if [ ! -d data/raw ]; then \
-		echo "Error: data/raw directory not found. Run scraping commands first."; \
-		exit 1; \
-	fi
-	@$(PYTHON) -m dominican_llm_scraper process
-
-setup-site:
-	@if [ -z "$(DOMAIN)" ]; then \
-		echo "Error: DOMAIN parameter required"; \
-		echo "Usage: make setup-site DOMAIN=example.com"; \
-		exit 1; \
-	fi
-	@echo "Creating site configuration for $(DOMAIN)..."
-	@DOMAIN_DIR=$$(echo "$(DOMAIN)" | sed 's/\./_/g'); \
-	if [ -d "config/sites/$$DOMAIN_DIR" ]; then \
-		echo "Error: Site $$DOMAIN_DIR already exists"; \
-		exit 1; \
-	fi; \
-	mkdir -p config/sites/$$DOMAIN_DIR; \
-	sed "s/DOMAIN_PLACEHOLDER/$(DOMAIN)/g" templates/site_config.yml > config/sites/$$DOMAIN_DIR/config.yml; \
-	echo ""; \
-	echo "  [+] Site created: config/sites/$$DOMAIN_DIR/"; \
-	echo "  [!] Edit config/sites/$$DOMAIN_DIR/config.yml before scraping"; \
-	echo ""; \
-	echo "  Next steps:"; \
-	echo "    1. Add URLs to config/urls.yml"; \
-	echo "    2. Edit config/sites/$$DOMAIN_DIR/config.yml for domain-specific overrides"; \
-	echo "    3. make scrape"; \
-	echo ""
-
-list-sites:
+firecrawl-test:
 	@echo ""
-	@echo "  Available Sites:"
-	@echo "  ────────────────────────────────────────────"
-	@ls -1 config/sites/ 2>/dev/null | grep -v README | grep -v __pycache__ | sed 's/_/./g' | sed 's/^/    /' || echo "    No sites configured"
-	@echo ""
-
-test:
-	@echo ""
-	@echo "  Testing Firecrawl endpoint..."
-	@echo "  ──────────────────────────────────────────────────────────────────────"
+	@echo "Testing Firecrawl endpoint..."
+	@echo "────────────────────────────────────────────────────────────"
 	@echo ""
 	@curl -s http://localhost:3002/v2/scrape \
 		-H 'Content-Type: application/json' \
@@ -264,100 +142,40 @@ test:
 		| $(PYTHON) -m json.tool || echo "Error: Firecrawl not responding. Run 'make firecrawl-start'"
 	@echo ""
 
-clean:
-	@echo "Cleaning scraped content and logs..."
-	@rm -rf data/raw/*
-	@rm -rf data/processed/*
-	@rm -rf data/logs/*
-	@echo "Cleaned data directories. Structure preserved."
-	@echo "Clean complete."
+# Scraping Commands
+scrape:
+	@$(PYTHON) -m dominican_llm_scraper scrape
 
-clean-all: clean firecrawl-clean
-	@echo "Removing Firecrawl installation..."
-	@rm -rf $(FIRECRAWL_DIR)
-	@echo "Removing virtual environment..."
-	@rm -rf $(VENV)
-	@echo "[+] Full cleanup complete."
-
-check-docker:
-	@which docker > /dev/null || (echo "Error: Docker not found. Install from https://docs.docker.com/get-docker/" && exit 1)
-	@docker info > /dev/null 2>&1 || (echo "Error: Docker daemon not running. Start Docker Desktop." && exit 1)
-	@which docker-compose > /dev/null || docker compose version > /dev/null 2>&1 || \
-		(echo "Error: Docker Compose not found." && exit 1)
-	@echo "Docker check passed."
-
-check-python:
-	@which python3 > /dev/null || (echo "Error: Python 3 not found." && exit 1)
-	@echo "[+] Python check passed."
-
-check-uv:
-	@if ! command -v uv > /dev/null 2>&1; then \
+scrape-url:
+	@if [ -z "$(URL)" ]; then \
 		echo ""; \
-		echo "  UV not found. Installing UV..."; \
-		echo "  ------------------------------------------------------------"; \
-		OS=$$(uname -s); \
-		if [ "$$OS" = "Darwin" ] || [ "$$OS" = "Linux" ]; then \
-			echo "  Detected $$OS - installing via official installer..."; \
-			curl -LsSf $(UV_INSTALL_URL) | sh; \
-			echo ""; \
-			echo "  [+] UV installed successfully"; \
-			echo "  [!] Please restart your shell or run: source $$HOME/.cargo/env"; \
-			echo ""; \
-		else \
-			echo ""; \
-			echo "  +----------------------------------------------------------+"; \
-			echo "  |  UV Installation Required (Windows Detected)             |"; \
-			echo "  +----------------------------------------------------------+"; \
-			echo ""; \
-			echo "  Please install UV manually:"; \
-			echo ""; \
-			echo "  Option 1 - PowerShell (Recommended):"; \
-			echo "    powershell -c \"irm https://astral.sh/uv/install.ps1 | iex\""; \
-			echo ""; \
-			echo "  Option 2 - pip:"; \
-			echo "    pip install uv"; \
-			echo ""; \
-			echo "  Option 3 - Standalone installer:"; \
-			echo "    https://github.com/astral-sh/uv/releases"; \
-			echo ""; \
-			exit 1; \
-		fi \
-	else \
-		UV_VERSION=$$(uv --version); \
-		echo "[+] UV check passed ($$UV_VERSION)"; \
-	fi
-
-uv-add:
-	@if [ -z "$(PKG)" ]; then \
-		echo "[x] Error: PKG parameter required"; \
-		echo "Usage: make uv-add PKG=requests"; \
-		echo "       make uv-add PKG='requests>=2.31.0'"; \
+		echo "Error: URL parameter required"; \
+		echo "Usage: make scrape-url URL=https://example.com/page"; \
+		echo ""; \
 		exit 1; \
 	fi
-	@echo "Adding package: $(PKG)"
-	@$(UV) add $(PKG)
-	@echo "[+] Package added and lockfile updated"
+	@$(PYTHON) -m dominican_llm_scraper scrape "$(URL)"
 
-uv-remove:
-	@if [ -z "$(PKG)" ]; then \
-		echo "[x] Error: PKG parameter required"; \
-		echo "Usage: make uv-remove PKG=requests"; \
+scrape-force:
+	@$(PYTHON) -m dominican_llm_scraper scrape --force
+
+# Processing Commands
+process:
+	@if [ ! -d data/raw ]; then \
+		echo ""; \
+		echo "Error: data/raw directory not found"; \
+		echo "Run scraping commands first to generate content"; \
+		echo ""; \
 		exit 1; \
 	fi
-	@echo "Removing package: $(PKG)"
-	@$(UV) remove $(PKG)
-	@echo "[+] Package removed and lockfile updated"
+	@$(PYTHON) -m dominican_llm_scraper process
 
-uv-sync:
-	@echo "Syncing dependencies from pyproject.toml..."
-	@$(UV) sync
-	@echo "[+] Dependencies synchronized"
-
-uv-lock:
-	@echo "Updating lockfile..."
-	@$(UV) lock
-	@echo "[+] Lockfile updated"
-
-uv-outdated:
-	@echo "Checking for outdated packages..."
-	@$(UV) pip list --outdated
+# Cleanup
+clean:
+	@if [ ! -d "$(FIRECRAWL_DIR)" ]; then \
+		echo "Error: Firecrawl directory not found"; \
+		exit 1; \
+	fi
+	@echo "Removing Firecrawl containers and volumes..."
+	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) down -v
+	@echo "✓ Firecrawl containers and volumes removed"
