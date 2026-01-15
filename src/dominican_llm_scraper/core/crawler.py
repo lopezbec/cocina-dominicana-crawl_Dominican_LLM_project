@@ -448,19 +448,6 @@ class Crawler:
         content_file = self.output_dir / content_filename
 
         with open(content_file, "w", encoding="utf-8") as f:
-            f.write("---\n")
-            f.write(f"doc_id: {doc_id}\n")
-            f.write(f"domain: {article_data['domain']}\n")
-            f.write(f'title: "{article_data["title"]}"\n')
-            if article_data["description"]:
-                f.write(f'description: "{article_data["description"]}"\n')
-            if category:
-                f.write(f"category: {category}\n")
-            f.write(f"url: {article_data['url']}\n")
-            f.write(f"scraped_at: {article_data['scraped_at']}\n")
-            f.write(f"word_count: {article_data['word_count']}\n")
-            f.write(f"char_count: {article_data['char_count']}\n")
-            f.write("---\n\n")
             f.write(article_data["content"])
 
         metadata = {k: v for k, v in article_data.items() if k != "content"}
