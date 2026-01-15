@@ -423,14 +423,11 @@ filters:
     - instagram\.com
 
 processing:
-  filter_english: true
-  min_content_length: 100
-  navigation_patterns:
-    - "Suscríbete.*para recibir.*"
-    - "Síguenos en:.*"
-  footer_markers:
-    - "Suscríbete para recibir"
+  filter_english: true      # Filter out English words from content
+  min_content_length: 100   # Minimum content length in characters
 ```
+
+**Note:** Navigation and footer removal patterns are universal and hard-coded in `ContentProcessor`. No site-specific configuration needed.
 
 #### 2. URL Registry (`config/urls.yml`)
 
