@@ -1,6 +1,6 @@
 .PHONY: help setup install check-uv firecrawl-init firecrawl-build firecrawl-start firecrawl-stop \
         firecrawl-restart firecrawl-status firecrawl-logs firecrawl-clean \
-        scrape scrape-url scrape-category scrape-list scrape-discover process test clean clean-all \
+        scrape scrape-url scrape-file scrape-force process test clean clean-all \
         check-docker check-python uv-add uv-remove uv-sync uv-lock uv-outdated setup-site list-sites
 
 .DEFAULT_GOAL := help
@@ -28,8 +28,6 @@ help:
 	@echo "  ║                                                                       ║"
 	@echo "  ╚═══════════════════════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "  ENVIRONMENT: CRAWL_DOMAIN=<domain> (REQUIRED for scraping)"
-	@echo ""
 	@echo "  SETUP COMMANDS"
 	@echo "  ------------------------------------------------------------"
 	@echo "    make setup              Complete first-time setup (install + firecrawl)"
@@ -47,14 +45,13 @@ help:
 	@echo "    make firecrawl-status   Show service status"
 	@echo "    make firecrawl-logs     Follow API logs"
 	@echo ""
-	@echo "  SCRAPING COMMANDS (Require CRAWL_DOMAIN environment variable)"
+	@echo "  SCRAPING COMMANDS"
 	@echo "  ------------------------------------------------------------"
-	@echo "    CRAWL_DOMAIN=example.com make scrape                 Run all configured sections"
-	@echo "    CRAWL_DOMAIN=example.com make scrape-url URL=<url>   Scrape a single URL"
-	@echo "    CRAWL_DOMAIN=example.com make scrape-category URL=<url>  Crawl category"
-	@echo "    CRAWL_DOMAIN=example.com make scrape-list FILE=<file>    Scrape URLs from file"
-	@echo "    CRAWL_DOMAIN=example.com make scrape-discover URL=<url>  Discover URLs"
-	@echo "    make test                                            Test Firecrawl endpoint"
+	@echo "    make scrape                    Scrape all unprocessed URLs from config/urls.yml"
+	@echo "    make scrape-url URL=<url>      Scrape specific URL with discovery"
+	@echo "    make scrape-file FILE=<file>   Scrape from custom YAML file"
+	@echo "    make scrape-force              Reprocess all URLs (ignores processed status)"
+	@echo "    make test                      Test Firecrawl endpoint"
 	@echo ""
 	@echo "  PROCESSING COMMANDS"
 	@echo "  ------------------------------------------------------------"
@@ -193,7 +190,7 @@ firecrawl-clean:
 	@echo "Firecrawl cleaned."
 
 scrape: check-uv
-	@$(PYTHON) -m dominican_llm_scraper scrape-all
+	@$(PYTHON) -m dominican_llm_scraper scrape
 
 scrape-url: check-uv
 	@if [ -z "$(URL)" ]; then \
@@ -203,46 +200,20 @@ scrape-url: check-uv
 	fi
 	@$(PYTHON) -m dominican_llm_scraper scrape "$(URL)"
 
-scrape-category: check-uv
-	@if [ -z "$(URL)" ]; then \
-		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-category URL=https://example.com/category DEPTH=2"; \
-		exit 1; \
-	fi
-	@if [ -n "$(DEPTH)" ]; then \
-		$(PYTHON) -m dominican_llm_scraper crawl "$(URL)" --depth $(DEPTH); \
-	else \
-		$(PYTHON) -m dominican_llm_scraper crawl "$(URL)"; \
-	fi
-
-scrape-list: check-uv
+scrape-file: check-uv
 	@if [ -z "$(FILE)" ]; then \
 		echo "Error: FILE parameter required"; \
-		echo "Usage: make scrape-list FILE=urls.txt"; \
+		echo "Usage: make scrape-file FILE=urls.yml"; \
 		exit 1; \
 	fi
 	@if [ ! -f "$(FILE)" ]; then \
 		echo "Error: File not found: $(FILE)"; \
 		exit 1; \
 	fi
-	@$(PYTHON) -m dominican_llm_scraper scrape-list "$(FILE)"
+	@$(PYTHON) -m dominican_llm_scraper scrape --urls-file "$(FILE)"
 
-scrape-discover: check-uv
-	@if [ -z "$(URL)" ]; then \
-		echo "Error: URL parameter required"; \
-		echo "Usage: make scrape-discover URL=https://example.com/section"; \
-		echo "       make scrape-discover URL=https://... SAVE=urls.txt NOINTERACTIVE=1"; \
-		exit 1; \
-	fi
-	@if [ -n "$(NOINTERACTIVE)" ]; then \
-		if [ -n "$(SAVE)" ]; then \
-			$(PYTHON) -m dominican_llm_scraper discover "$(URL)" --no-interactive --save "$(SAVE)"; \
-		else \
-			$(PYTHON) -m dominican_llm_scraper discover "$(URL)" --no-interactive; \
-		fi \
-	else \
-		$(PYTHON) -m dominican_llm_scraper discover "$(URL)"; \
-	fi
+scrape-force: check-uv
+	@$(PYTHON) -m dominican_llm_scraper scrape --force
 
 process: check-uv
 	@if [ ! -d data/raw ]; then \
@@ -265,14 +236,14 @@ setup-site:
 	fi; \
 	mkdir -p config/sites/$$DOMAIN_DIR; \
 	sed "s/DOMAIN_PLACEHOLDER/$(DOMAIN)/g" templates/site_config.yml > config/sites/$$DOMAIN_DIR/config.yml; \
-	cp templates/processing_patterns.yml config/sites/$$DOMAIN_DIR/; \
 	echo ""; \
 	echo "  [+] Site created: config/sites/$$DOMAIN_DIR/"; \
-	echo "  [!] Edit config/sites/$$DOMAIN_DIR/config.yml before crawling"; \
+	echo "  [!] Edit config/sites/$$DOMAIN_DIR/config.yml before scraping"; \
 	echo ""; \
 	echo "  Next steps:"; \
-	echo "    1. Edit config/sites/$$DOMAIN_DIR/config.yml"; \
-	echo "    2. CRAWL_DOMAIN=$(DOMAIN) make scrape"; \
+	echo "    1. Add URLs to config/urls.yml"; \
+	echo "    2. Edit config/sites/$$DOMAIN_DIR/config.yml for domain-specific overrides"; \
+	echo "    3. make scrape"; \
 	echo ""
 
 list-sites:
