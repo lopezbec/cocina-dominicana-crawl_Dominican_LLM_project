@@ -2,371 +2,245 @@
 import argparse
 import sys
 from pathlib import Path
-from typing import List
-from urllib.parse import urlparse
+
+from dominican_llm_scraper.core.config_loader import (
+    load_urls_config,
+    load_config,
+    update_url_processed_status,
+    get_domain_from_url,
+)
+from dominican_llm_scraper.core.crawler import Crawler
+from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
 
 
-def scrape_single_url(args, crawler):
-    from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
-
+def scrape_command(args):
+    """Scrape URLs from config or command line arguments."""
     logger = setup_canonical_logger(__name__)
-    log_canonical(logger, "cli_scrape_url_started", url=args.url)
 
-    output_dir = args.output or "custom"
-    result = crawler.scrape_url(args.url, output_directory=output_dir)
+    # Determine URLs to scrape
+    if args.urls:
+        # URLs provided as command line arguments
+        urls_to_scrape = args.urls
+        log_canonical(logger, "scrape_started_from_args", url_count=len(urls_to_scrape))
 
-    if result:
-        print(f"\nSuccessfully scraped: {args.url}")
-        print(f"Title: {result['title']}")
-        print(f"Word count: {result['word_count']}")
-        print(f"Saved to: {crawler.output_dir}")
-        log_canonical(logger, "cli_scrape_url_success", url=args.url)
-        return 0
+        # Scrape each URL directly without config
+        success_count = 0
+        failed_count = 0
+
+        for url in urls_to_scrape:
+            print(f"\nScraping: {url}")
+
+            # Load config from URL (preserves protocol)
+            config = load_config(url)
+            crawler = Crawler(config)
+
+            result = crawler.scrape_url(url)
+
+            if result:
+                print(f"  Success: {result['title']} ({result['word_count']} words)")
+                success_count += 1
+            else:
+                print("  Failed to scrape")
+                failed_count += 1
+
+        print("\n\nScraping completed:")
+        print(f"  Successful: {success_count}")
+        print(f"  Failed: {failed_count}")
+
+        log_canonical(
+            logger,
+            "scrape_completed_from_args",
+            success_count=success_count,
+            failed_count=failed_count,
+        )
+
+        return 0 if failed_count == 0 else 1
+
+    elif args.urls_file:
+        # Load URLs from custom file
+        urls_file = Path(args.urls_file)
+        if not urls_file.exists():
+            print(f"Error: File not found: {args.urls_file}")
+            return 1
+
+        import yaml
+
+        with open(urls_file, "r", encoding="utf-8") as f:
+            urls_config = yaml.safe_load(f)
+
+        urls_entries = urls_config.get("urls", [])
+        log_canonical(logger, "scrape_started_from_file", file=args.urls_file, url_count=len(urls_entries))
+
     else:
-        print(f"\nFailed to scrape: {args.url}")
-        log_canonical(logger, "cli_scrape_url_failed", url=args.url)
-        return 1
+        # Load URLs from config/urls.yml
+        try:
+            urls_entries = load_urls_config()
+            log_canonical(logger, "scrape_started_from_config", url_count=len(urls_entries))
+        except FileNotFoundError as e:
+            print(str(e))
+            return 1
 
-
-def crawl_category(args, crawler):
-    from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
-
-    logger = setup_canonical_logger(__name__)
-    log_canonical(logger, "cli_crawl_started", url=args.url, depth=args.depth)
-
-    result = crawler.crawl_category(
-        category_url=args.url,
-        category_name=args.name,
-        max_depth=args.depth,
-        skip_existing=not args.no_skip,
-    )
-
-    print(f"\nCategory crawl completed: {result['category_name']}")
-    print(f"URLs discovered: {result['urls_discovered']}")
-    print(f"Articles scraped: {result['articles_scraped']}")
-    print(f"Articles skipped: {result['articles_skipped']}")
-    print(f"Articles failed: {result['articles_failed']}")
-    print(f"Duration: {result['duration_ms'] / 1000:.2f}s")
-    print(f"Saved to: {crawler.output_dir}")
-
-    log_canonical(
-        logger,
-        "cli_crawl_completed",
-        category=result["category_name"],
-        urls_discovered=result["urls_discovered"],
-        articles_scraped=result["articles_scraped"],
-    )
-
-    return 0
-
-
-def scrape_list(args, crawler):
-    from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
-
-    logger = setup_canonical_logger(__name__)
-
-    urls_file = Path(args.file)
-    if not urls_file.exists():
-        print(f"Error: File not found: {args.file}")
-        return 1
-
-    with open(urls_file, "r", encoding="utf-8") as f:
-        urls = [line.strip() for line in f if line.strip() and not line.startswith("#")]
-
-    if not urls:
-        print(f"Error: No URLs found in {args.file}")
-        return 1
-
-    log_canonical(logger, "cli_scrape_list_started", file=args.file, url_count=len(urls))
-
-    output_dir = args.output or "batch"
-
-    success_count = 0
-    failed_count = 0
-
-    print(f"\nScraping {len(urls)} URLs from {args.file}...")
-
-    for i, url in enumerate(urls, 1):
-        print(f"\n[{i}/{len(urls)}] Scraping: {url}")
-        result = crawler.scrape_url(url, output_directory=output_dir)
-
-        if result:
-            print(f"  Success: {result['title']} ({result['word_count']} words)")
-            success_count += 1
+    # Filter to unprocessed URLs (only if using config files)
+    if not args.urls:
+        if args.force:
+            # Process all URLs
+            urls_to_process = urls_entries
+            print(f"\nProcessing all {len(urls_entries)} URLs (--force mode)")
         else:
-            print("  Failed to scrape")
-            failed_count += 1
+            # Only process unprocessed URLs
+            urls_to_process = [u for u in urls_entries if not u.get("processed", False)]
+            processed_count = len(urls_entries) - len(urls_to_process)
 
-    print("\n\nBatch scraping completed:")
-    print(f"  Successful: {success_count}")
-    print(f"  Failed: {failed_count}")
-    print(f"  Saved to: {crawler.output_dir}")
+            if processed_count > 0:
+                print(f"\nSkipping {processed_count} already-processed URLs")
 
-    log_canonical(
-        logger,
-        "cli_scrape_list_completed",
-        total_urls=len(urls),
-        success_count=success_count,
-        failed_count=failed_count,
-    )
+            if not urls_to_process:
+                print("\nNo URLs to process (all marked as processed)")
+                print("Use --force to reprocess all URLs")
+                return 0
 
-    return 0 if failed_count == 0 else 1
+            print(f"Processing {len(urls_to_process)} unprocessed URLs")
+    else:
+        urls_to_process = urls_entries
 
+    # Process each URL entry
+    total_discovered = 0
+    total_scraped = 0
+    total_failed = 0
+    total_skipped = 0
+    crawler = None  # Initialize crawler variable
 
-def scrape_all_sections(args, crawler):
-    from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
+    for i, url_entry in enumerate(urls_to_process, 1):
+        url = url_entry["url"]
+        domain = url_entry["domain"]
+        name = url_entry.get("name", "Unknown")
+        max_depth = url_entry.get("max_depth", 2)
 
-    logger = setup_canonical_logger(__name__)
-    log_canonical(logger, "cli_scrape_all_started")
+        print(f"\n{'=' * 70}")
+        print(f"[{i}/{len(urls_to_process)}] Processing: {name}")
+        print(f"  URL: {url}")
+        print(f"  Domain: {domain}")
+        print(f"  Max depth: {max_depth}")
+        print(f"{'=' * 70}\n")
 
-    crawler.scrape_all_sections()
+        # Load config from URL (preserves protocol)
+        config = load_config(url)
+        crawler = Crawler(config)
 
-    print("\nAll sections scraped successfully")
-    print(f"Results saved to: {crawler.output_dir}")
+        # Crawl with discovery
+        result = crawler.crawl_category(
+            category_url=url,
+            base_url=config.base_url,
+            category_name=name,
+            max_depth=max_depth,
+            skip_existing=True,
+        )
 
-    log_canonical(logger, "cli_scrape_all_completed")
-    return 0
+        total_discovered += result["urls_discovered"]
+        total_scraped += result["articles_scraped"]
+        total_failed += result["articles_failed"]
+        total_skipped += result["articles_skipped"]
 
+        print(f"\n  URLs discovered: {result['urls_discovered']}")
+        print(f"  Articles scraped: {result['articles_scraped']}")
+        print(f"  Articles skipped: {result['articles_skipped']}")
+        print(f"  Articles failed: {result['articles_failed']}")
 
-def extract_section_name_from_url(url: str) -> str:
-    parsed = urlparse(url)
-    path_parts = [p for p in parsed.path.strip("/").split("/") if p]
+        # Mark URL as processed (if using config file and not --no-update)
+        if not args.urls and not args.no_update:
+            update_url_processed_status(url, processed=True)
+            print("  ✓ Marked as processed in config/urls.yml")
 
-    if path_parts:
-        return "_".join(path_parts)
-    return "discovered"
-
-
-def display_interactive_menu(urls: List[str], source_url: str, section_name: str) -> int:
+    # Final summary
     print(f"\n{'=' * 70}")
-    print(f"  DISCOVERED URLs: {len(urls)}")
-    print(f"  Source: {source_url}")
-    print(f"  Section: {section_name}")
+    print("SCRAPING SESSION COMPLETED")
+    print(f"{'=' * 70}")
+    print(f"  URLs processed: {len(urls_to_process)}")
+    print(f"  Total URLs discovered: {total_discovered}")
+    print(f"  Total articles scraped: {total_scraped}")
+    print(f"  Total articles skipped: {total_skipped}")
+    print(f"  Total articles failed: {total_failed}")
+    if crawler:
+        print(f"  Output directory: {crawler.output_dir}")
     print(f"{'=' * 70}\n")
 
-    print("What would you like to do?\n")
-    print("  [1] Scrape all URLs now (save to: scraped_content/)")
-    print("  [2] Save URLs to file")
-    print("  [3] Nothing (exit)")
-    print()
+    log_canonical(
+        logger,
+        "scrape_session_completed",
+        urls_processed=len(urls_to_process),
+        total_discovered=total_discovered,
+        total_scraped=total_scraped,
+        total_skipped=total_skipped,
+        total_failed=total_failed,
+    )
 
-    while True:
-        try:
-            choice = input("Enter your choice [1-3]: ").strip()
-
-            if choice in ["1", "2", "3"]:
-                return int(choice)
-            else:
-                print("Invalid choice. Please enter 1, 2, or 3.")
-        except (KeyboardInterrupt, EOFError):
-            print("\n\nCancelled by user")
-            return 3
+    return 0 if total_failed == 0 else 1
 
 
-def discover_urls(args, crawler):
-    from dominican_llm_scraper.utils import setup_canonical_logger, log_canonical
-
-    logger = setup_canonical_logger(__name__)
-    log_canonical(logger, "cli_discover_started", url=args.url)
-
-    urls = crawler.auto_discover_urls(args.url, use_config_filters=not args.no_filter)
-
-    if not urls:
-        print(f"\nNo URLs discovered from {args.url}")
-        log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=0)
-        return 0
-
-    print(f"\nDiscovered {len(urls)} URLs from {args.url}:\n")
-
-    for i, url in enumerate(urls, 1):
-        print(f"  {i:3d}. {url}")
-
-    section_name = extract_section_name_from_url(args.url)
-
-    if args.interactive:
-        choice = display_interactive_menu(urls, args.url, section_name)
-
-        if choice == 1:
-            print(f"\n{'=' * 70}")
-            print(f"  SCRAPING {len(urls)} URLs")
-            print("  Output directory: scraped_content/")
-            print(f"{'=' * 70}\n")
-
-            success_count = 0
-            failed_count = 0
-
-            for i, url in enumerate(urls, 1):
-                print(f"\n[{i}/{len(urls)}] Scraping: {url}")
-                result = crawler.scrape_url(url, output_directory=section_name)
-
-                if result:
-                    print(f"  Success: {result['title']} ({result['word_count']} words)")
-                    success_count += 1
-                else:
-                    print("  Failed to scrape")
-                    failed_count += 1
-
-            print(f"\n{'=' * 70}")
-            print("  SCRAPING COMPLETED")
-            print(f"  Successful: {success_count}")
-            print(f"  Failed: {failed_count}")
-            print(f"  Saved to: {crawler.output_dir}")
-            print(f"{'=' * 70}\n")
-
-            log_canonical(
-                logger,
-                "cli_discover_scrape_completed",
-                url=args.url,
-                urls_found=len(urls),
-                success_count=success_count,
-                failed_count=failed_count,
-            )
-
-            return 0 if failed_count == 0 else 1
-
-        elif choice == 2:
-            if args.save:
-                output_file = Path(args.save)
-            else:
-                output_file = Path(f"{section_name}_urls.txt")
-
-            with open(output_file, "w", encoding="utf-8") as f:
-                for url in urls:
-                    f.write(f"{url}\n")
-
-            print(f"\nURLs saved to: {output_file}")
-            log_canonical(
-                logger,
-                "cli_discover_saved",
-                url=args.url,
-                urls_found=len(urls),
-                file=str(output_file),
-            )
-            return 0
-
-        else:
-            print("\nNo action taken. Exiting.")
-            log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=len(urls))
-            return 0
-
-    else:
-        if args.save:
-            output_file = Path(args.save)
-            with open(output_file, "w", encoding="utf-8") as f:
-                for url in urls:
-                    f.write(f"{url}\n")
-            print(f"\nURLs saved to: {output_file}")
-
-        log_canonical(logger, "cli_discover_completed", url=args.url, urls_found=len(urls))
-        return 0
-
-
-def process_to_plaintext(args, config):
+def process_to_plaintext(args):
+    """Process scraped markdown to plaintext."""
     from dominican_llm_scraper.core.processor import process_all_files
-    from dominican_llm_scraper.core.config_loader import load_processing_patterns
+    from dominican_llm_scraper.core.config_loader import load_config
 
-    domain = config.domain
-    processing_patterns = load_processing_patterns(domain)
+    # Load global config for processing settings
+    config = load_config()
 
     input_dir = Path(args.input) if args.input else Path(config.get("output_dir", "data/raw"))
     output_dir = Path(args.output) if args.output else Path(config.get("plaintext_output_dir", "data/processed"))
 
     if not input_dir.exists():
         print(f"Error: Input directory '{input_dir}' does not exist")
-        print("Run scraping commands first to generate content")
+        print("Run scraping command first to generate content")
         return 1
 
-    print(f"Processing domain: {domain}")
+    print("Processing content to plaintext")
     print(f"Input: {input_dir}")
     print(f"Output: {output_dir}\n")
 
-    process_all_files(input_dir, output_dir, config, processing_patterns)
+    # Processing patterns are now in global config
+    process_all_files(input_dir, output_dir, config, processing_patterns=None)
     return 0
 
 
 def main():
-    from dominican_llm_scraper.core.config_loader import load_config
-    from dominican_llm_scraper.core.crawler import Crawler
     from dominican_llm_scraper.core.logging_config import setup_logging
 
     # Initialize logging FIRST, before any other imports or operations
     setup_logging()
 
     parser = argparse.ArgumentParser(
-        description="Multi-Site Web Scraper using Firecrawl",
+        description="Multi-Domain Web Scraper using Firecrawl",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Environment Variables:
-  CRAWL_DOMAIN    Domain to scrape (REQUIRED)
-
 Examples:
-  Scrape a single URL:
-    CRAWL_DOMAIN=example.com %(prog)s scrape https://example.com/article
+  Scrape all unprocessed URLs from config/urls.yml:
+    %(prog)s scrape
 
-  Crawl a category with depth 2:
-    CRAWL_DOMAIN=example.com %(prog)s crawl https://example.com/category --depth 2
+  Scrape specific URLs:
+    %(prog)s scrape https://example.com/page1 https://example.com/page2
 
-  Scrape URLs from a file:
-    CRAWL_DOMAIN=example.com %(prog)s scrape-list urls.txt
+  Scrape from custom URLs file:
+    %(prog)s scrape --urls-file custom_urls.yml
 
-  Discover URLs with interactive menu:
-    CRAWL_DOMAIN=example.com %(prog)s discover https://example.com/section
-
-  Scrape all configured sections:
-    CRAWL_DOMAIN=example.com %(prog)s scrape-all
+  Force reprocess all URLs:
+    %(prog)s scrape --force
 
   Process to plaintext:
-    CRAWL_DOMAIN=example.com %(prog)s process
+    %(prog)s process
         """,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    scrape_parser = subparsers.add_parser("scrape", help="Scrape a single URL")
-    scrape_parser.add_argument("url", help="URL to scrape")
-    scrape_parser.add_argument("--output", help="Output directory name (default: custom)")
-    scrape_parser.set_defaults(func=scrape_single_url)
+    # Scrape command
+    scrape_parser = subparsers.add_parser("scrape", help="Scrape URLs with discovery")
+    scrape_parser.add_argument("urls", nargs="*", help="URLs to scrape (bypasses config/urls.yml)")
+    scrape_parser.add_argument("--urls-file", help="Custom URLs file (YAML format)")
+    scrape_parser.add_argument("--force", action="store_true", help="Reprocess already-processed URLs")
+    scrape_parser.add_argument("--no-update", action="store_true", help="Don't update processed status in config")
+    scrape_parser.set_defaults(func=scrape_command)
 
-    crawl_parser = subparsers.add_parser("crawl", help="Crawl a category page and scrape discovered articles")
-    crawl_parser.add_argument("url", help="Category URL to crawl")
-    crawl_parser.add_argument("--depth", type=int, default=1, help="Maximum crawl depth (default: 1)")
-    crawl_parser.add_argument(
-        "--name",
-        help="Category name for output directory (auto-detected if not provided)",
-    )
-    crawl_parser.add_argument(
-        "--no-skip",
-        action="store_true",
-        help="Re-scrape existing files instead of skipping them",
-    )
-    crawl_parser.set_defaults(func=crawl_category)
-
-    list_parser = subparsers.add_parser("scrape-list", help="Scrape multiple URLs from a file")
-    list_parser.add_argument("file", help="File containing URLs (one per line)")
-    list_parser.add_argument("--output", help="Output directory name (default: batch)")
-    list_parser.set_defaults(func=scrape_list)
-
-    all_parser = subparsers.add_parser("scrape-all", help="Scrape all sections defined in site config")
-    all_parser.set_defaults(func=scrape_all_sections)
-
-    discover_parser = subparsers.add_parser("discover", help="Discover URLs from a page with interactive menu")
-    discover_parser.add_argument("url", help="URL to discover links from")
-    discover_parser.add_argument("--save", help="Save discovered URLs to file")
-    discover_parser.add_argument("--no-filter", action="store_true", help="Disable config-based URL filtering")
-    discover_parser.add_argument(
-        "--interactive",
-        action="store_true",
-        default=True,
-        help="Enable interactive menu (default: True)",
-    )
-    discover_parser.add_argument(
-        "--no-interactive",
-        dest="interactive",
-        action="store_false",
-        help="Disable interactive menu for scripting",
-    )
-    discover_parser.set_defaults(func=discover_urls)
-
+    # Process command
     process_parser = subparsers.add_parser("process", help="Process scraped markdown to plain text")
     process_parser.add_argument("--input", help="Input directory (default: from config)")
     process_parser.add_argument("--output", help="Output directory (default: from config)")
@@ -379,16 +253,7 @@ Examples:
         return 1
 
     try:
-        config = load_config()
-
-        print(f"\nCrawling domain: {config.domain}")
-        print(f"Configuration: config/sites/{config.domain_slug}/config.yml\n")
-
-        if args.command == "process":
-            return args.func(args, config)
-        else:
-            crawler = Crawler(config)
-            return args.func(args, crawler)
+        return args.func(args)
 
     except ValueError as e:
         print(str(e))
