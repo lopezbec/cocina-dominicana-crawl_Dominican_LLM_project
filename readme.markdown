@@ -29,7 +29,7 @@ graph TB
     B --> G[PostgreSQL:5432]
     B --> H[Content Extraction]
     A --> I[File System]
-    I --> J[scraped_content/]
+    I --> J[data/raw/]
     J --> K[Markdown Files with Domain]
     J --> L[metadata.jsonl]
     
@@ -393,13 +393,12 @@ crawler:
   max_retries: 3
 ```
 
-#### Site-Specific Configuration (`sites/{domain}/config.yml`)
+#### Site-Specific Configuration (`config/sites/{domain}/config.yml`)
 
 Override defaults for specific sites:
 
 ```yaml
 base_url: "https://www.example.com"
-output_dir: "scraped_content"
 
 filters:
   include_patterns:
@@ -450,7 +449,7 @@ result = crawler.crawl_category(
 ## Output Structure
 
 ```
-scraped_content/
+data/raw/
 ├── 0001_cocinadominicana_com_batata-asada.md
 ├── 0002_cocinadominicana_com_mangu.md
 ├── 0003_example_com_article-title.md
