@@ -7,8 +7,7 @@
 
 PYTHON := uv run python
 UV := uv
-FIRECRAWL_DIR := firecrawl-local
-FIRECRAWL_URL := https://github.com/mendableai/firecrawl.git
+FIRECRAWL_DIR := firecrawl
 DOCKER_COMPOSE := docker compose
 VENV := .venv
 UV_INSTALL_URL := https://astral.sh/uv/install.sh
@@ -35,13 +34,13 @@ help:
 	@echo "  ------------------------------------------------------------"
 	@echo "    make setup              Complete first-time setup (install + firecrawl)"
 	@echo "    make install            Install Python dependencies"
-	@echo "    make firecrawl-init     Clone and initialize Firecrawl"
+	@echo "    make firecrawl-init     Initialize Firecrawl"
 	@echo "    make setup-site DOMAIN=<domain>  Create new site configuration"
 	@echo "    make list-sites         List available sites"
 	@echo ""
 	@echo "  FIRECRAWL MANAGEMENT"
 	@echo "  ------------------------------------------------------------"
-	@echo "    make firecrawl-build    Build Docker images (first run: 5-10 min)"
+	@echo "    make firecrawl-build    Build custom Postgres image (~30 sec)"
 	@echo "    make firecrawl-start    Start Firecrawl services"
 	@echo "    make firecrawl-stop     Stop Firecrawl services"
 	@echo "    make firecrawl-restart  Restart all services"
@@ -111,17 +110,13 @@ install: check-uv check-python
 
 firecrawl-init:
 	@if [ -d "$(FIRECRAWL_DIR)" ]; then \
-		echo "Firecrawl directory already exists. Skipping clone."; \
+		echo "Firecrawl directory already exists. Skipping initialization."; \
 	else \
-		echo "Cloning Firecrawl repository..."; \
-		git clone $(FIRECRAWL_URL) $(FIRECRAWL_DIR); \
-		echo "Creating Firecrawl .env configuration..."; \
-		echo "PORT=3002" > $(FIRECRAWL_DIR)/.env; \
-		echo "HOST=0.0.0.0" >> $(FIRECRAWL_DIR)/.env; \
-		echo "USE_DB_AUTHENTICATION=false" >> $(FIRECRAWL_DIR)/.env; \
-		echo "BULL_AUTH_KEY=CHANGEME" >> $(FIRECRAWL_DIR)/.env; \
-		echo "LOGGING_LEVEL=INFO" >> $(FIRECRAWL_DIR)/.env; \
+		echo "Initializing Firecrawl..."; \
 		echo "Firecrawl initialized successfully."; \
+		echo ""; \
+		echo "Note: Firecrawl uses pre-built Docker images."; \
+		echo "Only the custom Postgres image needs to be built."; \
 	fi
 
 firecrawl-build:
@@ -129,8 +124,8 @@ firecrawl-build:
 		echo "Error: Firecrawl not initialized. Run 'make firecrawl-init' first."; \
 		exit 1; \
 	fi
-	@echo "Building Docker images (this may take 5-10 minutes on first run)..."
-	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) build
+	@echo "Building custom Postgres image..."
+	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) build nuq-postgres
 	@echo "Build complete."
 
 firecrawl-start:
@@ -138,6 +133,8 @@ firecrawl-start:
 		echo "Error: Firecrawl not initialized. Run 'make firecrawl-init' first."; \
 		exit 1; \
 	fi
+	@echo "Pulling latest Firecrawl images..."
+	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) pull api playwright-service
 	@echo "Starting Firecrawl services..."
 	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) up -d
 	@echo "Waiting for services to be ready..."
