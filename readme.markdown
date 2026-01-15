@@ -721,9 +721,14 @@ ERROR: Site configuration not found for domain 'example.com'
 Enable verbose logging:
 
 ```python
-from utils import setup_canonical_logger
+import logging
+import os
 
-logger = setup_canonical_logger(__name__, level="DEBUG")
+# Set debug level via environment
+os.environ["LOG_LEVEL"] = "DEBUG"
+
+# Then use standard logger (after setup_logging() is called)
+logger = logging.getLogger(__name__)
 ```
 
 ### Performance Analysis
