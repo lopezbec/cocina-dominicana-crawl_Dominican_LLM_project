@@ -6,9 +6,19 @@ from wordfreq import word_frequency
 
 
 class ContentProcessor:
-    def __init__(self, config: Any, processing_patterns: Optional[Dict[str, Any]] = None):
+    def __init__(self, config: Any):
+        """Initialize content processor with configuration.
+
+        Args:
+            config: SiteConfig object containing processing settings.
+                   Processing patterns should be in config.processing.
+        """
         self.config = config
-        self.processing_patterns = processing_patterns or {}
+
+        # Extract processing patterns from config
+        processing = config.processing.to_dict() if hasattr(config, "processing") else {}
+        self.navigation_patterns = processing.get("navigation_patterns", [])
+        self.footer_markers = processing.get("footer_markers", [])
 
     def extract_frontmatter(self, content: str) -> Tuple[Dict, str]:
         frontmatter = {}
@@ -28,6 +38,7 @@ class ContentProcessor:
         return frontmatter, body
 
     def remove_navigation_elements(self, text: str) -> str:
+        """Remove navigation and UI elements from text."""
         patterns_to_remove = [
             r"\*\s+\[Saltar a[^\]]+\]\([^\)]+\)",
             r"\[In English\]\([^\)]+\)",
@@ -66,8 +77,8 @@ class ContentProcessor:
             r"^\s*-\s*$",
         ]
 
-        custom_patterns = self.processing_patterns.get("navigation_patterns", [])
-        patterns_to_remove.extend(custom_patterns)
+        # Add custom patterns from config
+        patterns_to_remove.extend(self.navigation_patterns)
 
         cleaned = text
         for pattern in patterns_to_remove:
@@ -111,13 +122,14 @@ class ContentProcessor:
         return text
 
     def remove_footer_sections(self, text: str) -> str:
+        """Remove footer sections from text."""
         footer_markers = [
             "Referencias",
             "Fuentes",
         ]
 
-        custom_markers = self.processing_patterns.get("footer_markers", [])
-        footer_markers.extend(custom_markers)
+        # Add custom markers from config
+        footer_markers.extend(self.footer_markers)
 
         min_pos = len(text)
         for marker in footer_markers:
@@ -214,9 +226,17 @@ def process_all_files(
     input_dir: Path,
     output_dir: Path,
     config: Any,
-    processing_patterns: Optional[Dict[str, Any]] = None,
+    processing_patterns: Optional[Dict[str, Any]] = None,  # Kept for compatibility but unused
 ):
-    processor = ContentProcessor(config, processing_patterns)
+    """Process all scraped markdown files to plaintext.
+
+    Args:
+        input_dir: Directory containing scraped markdown files
+        output_dir: Directory to save processed plaintext files
+        config: SiteConfig object with processing settings
+        processing_patterns: Deprecated, kept for compatibility
+    """
+    processor = ContentProcessor(config)
 
     metadata_file = input_dir / "metadata.jsonl"
 
@@ -347,34 +367,32 @@ def process_all_files(
 
 if __name__ == "__main__":
     import sys
-    from core import load_config, load_processing_patterns
+    from dominican_llm_scraper.core.config_loader import load_config
 
     try:
+        # Load global config (no domain required anymore)
         config = load_config()
-        domain = config.domain
-        processing_patterns = load_processing_patterns(domain)
 
         if len(sys.argv) > 1:
             input_dir = Path(sys.argv[1])
         else:
-            input_dir = Path(config.get("output_dir", "scraped_content"))
+            input_dir = Path(config.get("output_dir", "data/raw"))
 
         if len(sys.argv) > 2:
             output_dir = Path(sys.argv[2])
         else:
-            output_dir = Path(config.get("plaintext_output_dir", "scrapped_plain_text"))
+            output_dir = Path(config.get("plaintext_output_dir", "data/processed"))
 
         if not input_dir.exists():
             print(f"Error: Input directory '{input_dir}' does not exist")
-            print("Usage: python -m core.processor [input_dir] [output_dir]")
+            print("Usage: python -m dominican_llm_scraper.core.processor [input_dir] [output_dir]")
             sys.exit(1)
 
-        print(f"Domain: {domain}")
         print(f"Input directory: {input_dir}")
         print(f"Output directory: {output_dir}")
         print()
 
-        process_all_files(input_dir, output_dir, config, processing_patterns)
+        process_all_files(input_dir, output_dir, config)
 
     except ValueError as e:
         print(str(e))

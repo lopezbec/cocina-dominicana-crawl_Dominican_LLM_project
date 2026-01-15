@@ -1,12 +1,85 @@
-import os
 import re
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from urllib.parse import urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
+
+
+# ============================================================================
+# URL Configuration Management
+# ============================================================================
+
+
+def load_urls_config() -> List[Dict[str, Any]]:
+    """Load URLs configuration from config/urls.yml."""
+    urls_file = Path("config/urls.yml")
+
+    if not urls_file.exists():
+        raise FileNotFoundError(
+            f"URLs configuration file not found: {urls_file}\nRun the migration script first: python migrate_config.py"
+        )
+
+    with open(urls_file, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    return config.get("urls", [])
+
+
+def update_url_processed_status(url: str, processed: bool = True):
+    """Update the processed status of a URL in config/urls.yml."""
+    urls_file = Path("config/urls.yml")
+
+    if not urls_file.exists():
+        return
+
+    with open(urls_file, "r", encoding="utf-8") as f:
+        config = yaml.safe_load(f)
+
+    urls = config.get("urls", [])
+
+    for url_entry in urls:
+        if url_entry.get("url") == url:
+            url_entry["processed"] = processed
+            break
+
+    with open(urls_file, "w", encoding="utf-8") as f:
+        # Preserve comments by reading original content
+        with open(urls_file, "r", encoding="utf-8") as rf:
+            lines = rf.readlines()
+            comments = []
+            for line in lines:
+                if line.strip().startswith("#"):
+                    comments.append(line)
+                else:
+                    break
+
+        # Write comments back
+        f.writelines(comments)
+        if comments and not comments[-1].endswith("\n\n"):
+            f.write("\n")
+
+        # Write updated config
+        yaml.dump(config, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+
+
+def get_domain_from_url(url: str) -> str:
+    """Extract domain from URL."""
+    parsed = urlparse(url)
+    domain = parsed.netloc
+
+    # Remove www. prefix if present
+    if domain.startswith("www."):
+        domain = domain[4:]
+
+    return domain
+
+
+# ============================================================================
+# Site Configuration
+# ============================================================================
 
 
 class SiteConfig:
@@ -37,6 +110,7 @@ def get_domain_directory(domain: str) -> str:
 
 
 def get_available_sites() -> list[str]:
+    """Get list of configured sites from config/sites directory."""
     sites_dir = Path("config/sites")
     if not sites_dir.exists():
         return []
@@ -47,33 +121,6 @@ def get_available_sites() -> list[str]:
             sites.append(item.name.replace("_", "."))
 
     return sorted(sites)
-
-
-def validate_crawl_domain() -> str:
-    domain = os.getenv("CRAWL_DOMAIN")
-
-    if not domain:
-        available_sites = get_available_sites()
-        error_msg = "\n" + "=" * 70 + "\n"
-        error_msg += "ERROR: CRAWL_DOMAIN environment variable not set\n"
-        error_msg += "=" * 70 + "\n\n"
-        error_msg += "The CRAWL_DOMAIN environment variable is required.\n\n"
-        error_msg += "Usage:\n"
-        error_msg += "  CRAWL_DOMAIN=example.com make crawl\n"
-        error_msg += "  CRAWL_DOMAIN=example.com uv run scraper scrape-all\n\n"
-
-        if available_sites:
-            error_msg += "Available sites:\n"
-            for site in available_sites:
-                error_msg += f"  - {site}\n"
-        else:
-            error_msg += "No sites configured yet. Create one with:\n"
-            error_msg += "  make setup-site DOMAIN=example.com\n"
-
-        error_msg += "\n" + "=" * 70 + "\n"
-        raise ValueError(error_msg)
-
-    return domain
 
 
 def generate_url_patterns(base_url: str) -> list[str]:
@@ -91,6 +138,12 @@ def generate_url_patterns(base_url: str) -> list[str]:
 
 
 def merge_configs(global_config: Dict[str, Any], site_config: Dict[str, Any]) -> Dict[str, Any]:
+    """Merge site-specific config into global config.
+
+    - Scalar values: site overrides global
+    - Lists: site is appended to global (merged)
+    - Dicts: recursively merged
+    """
     merged = global_config.copy()
 
     for key, value in site_config.items():
@@ -99,22 +152,27 @@ def merge_configs(global_config: Dict[str, Any], site_config: Dict[str, Any]) ->
         elif isinstance(value, dict) and isinstance(merged[key], dict):
             merged[key] = merge_configs(merged[key], value)
         elif isinstance(value, list) and isinstance(merged[key], list):
-            if key == "exclude_patterns" or key == "include_patterns":
-                merged[key] = merged[key] + value
-            else:
-                merged[key] = value
+            # For lists, merge (append site-specific to global)
+            merged[key] = merged[key] + value
         else:
+            # Scalar values: site overrides global
             merged[key] = value
 
     return merged
 
 
-def load_config() -> SiteConfig:
-    domain = validate_crawl_domain()
+def load_config(domain: Optional[str] = None) -> SiteConfig:
+    """Load configuration for a specific domain or URL.
 
-    # Auto-generate base_url from domain (always HTTPS)
-    base_url = f"https://{domain}"
+    Args:
+        domain: Optional domain name or full URL. If URL provided (with http:// or https://),
+                the protocol is preserved in base_url. If plain domain provided, defaults to https://.
+                If not provided, returns global config only.
 
+    Returns:
+        SiteConfig object with merged configuration.
+    """
+    # Load global config
     global_config_path = Path("config/config.yml")
     if global_config_path.exists():
         with open(global_config_path, "r", encoding="utf-8") as f:
@@ -122,54 +180,42 @@ def load_config() -> SiteConfig:
     else:
         global_config = {}
 
+    # If no domain specified, return global config
+    if not domain:
+        return SiteConfig(global_config)
+
+    # Auto-generate base_url from domain or URL
+    if domain.startswith("http://") or domain.startswith("https://"):
+        # Full URL provided - preserve protocol AND netloc (including www)
+        parsed = urlparse(domain)
+        base_url = f"{parsed.scheme}://{parsed.netloc}"
+        # Extract clean domain (without www) for config directory lookup
+        domain = parsed.netloc
+        if domain.startswith("www."):
+            domain = domain[4:]
+    else:
+        # Plain domain provided - default to HTTPS
+        base_url = f"https://{domain}"
+
+    # Load site-specific config if exists
     domain_dir = get_domain_directory(domain)
     site_config_path = Path("config/sites") / domain_dir / "config.yml"
 
-    if not site_config_path.exists():
-        available_sites = get_available_sites()
-        error_msg = "\n" + "=" * 70 + "\n"
-        error_msg += f"ERROR: Site configuration not found for domain: {domain}\n"
-        error_msg += "=" * 70 + "\n\n"
-        error_msg += f"Expected configuration file: {site_config_path}\n\n"
+    if site_config_path.exists():
+        with open(site_config_path, "r", encoding="utf-8") as f:
+            site_config = yaml.safe_load(f) or {}
+    else:
+        site_config = {}
 
-        if available_sites:
-            error_msg += "Available sites:\n"
-            for site in available_sites:
-                error_msg += f"  - {site}\n"
-            error_msg += "\n"
-
-        error_msg += "To create a new site configuration:\n"
-        error_msg += f"  make setup-site DOMAIN={domain}\n"
-        error_msg += "\n" + "=" * 70 + "\n"
-        raise FileNotFoundError(error_msg)
-
-    with open(site_config_path, "r", encoding="utf-8") as f:
-        site_config = yaml.safe_load(f) or {}
-
+    # Merge configs
     merged_config = merge_configs(global_config, site_config)
 
     merged_config["domain"] = domain
     merged_config["domain_slug"] = domain_dir
-    merged_config["base_url"] = base_url  # Set auto-generated base_url
+    merged_config["base_url"] = base_url
 
     # Generate URL patterns from auto-generated base_url
     auto_patterns = generate_url_patterns(base_url)
-    if "filters" not in merged_config:
-        merged_config["filters"] = {}
-    if "include_patterns" not in merged_config["filters"]:
-        merged_config["filters"]["include_patterns"] = []
-
     merged_config["_auto_url_patterns"] = auto_patterns
 
     return SiteConfig(merged_config)
-
-
-def load_processing_patterns(domain: str) -> Optional[Dict[str, Any]]:
-    domain_dir = get_domain_directory(domain)
-    patterns_path = Path("config/sites") / domain_dir / "processing_patterns.yml"
-
-    if not patterns_path.exists():
-        return None
-
-    with open(patterns_path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f) or {}
