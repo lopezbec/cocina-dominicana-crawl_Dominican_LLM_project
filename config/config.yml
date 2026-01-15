@@ -23,12 +23,3 @@ filters:
 processing:
   filter_english: true
   min_content_length: 100
-  navigation_patterns:
-  - ¡Hola, gracias por visitarnos!.*
-  - Comparte tus preguntas.*
-  - Suscríbete.*para recibir.*
-  - ¡No pierdas el contacto!.*
-  - Síguenos en:.*
-  footer_markers:
-  - ¡Hola, gracias por visitarnos
-  - Suscríbete para recibir
