@@ -13,7 +13,7 @@ filters:
   - xmlrpc
   - feed
   - comments
-  - \.(jpg|jpeg|png|gif|svg|webp|ico)$
+  - \.(jpg|jpeg|png|gif|svg|webp|ico|xlsx|xls)$
   - facebook\.com
   - instagram\.com
   - youtube\.com
