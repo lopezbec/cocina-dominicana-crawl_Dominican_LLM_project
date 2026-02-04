@@ -44,3 +44,4 @@ sites/
 utils.py
 config.yml
 scraping.log
+.DS_Store
