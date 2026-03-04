@@ -1,0 +1,183 @@
+# -*- coding: utf-8 -*-
+# ---
+# jupyter:
+#   jupytext:
+#     cell_metadata_filter: -all
+#     custom_cell_magics: kql
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.11.2
+#   kernelspec:
+#     display_name: dominican-llm-scraper (3.12.12)
+#     language: python
+#     name: python3
+# ---
+
+# %% [markdown]
+# # 01 - Generate Metrics
+
+# %%
+import json
+import logging
+import re
+from collections import Counter
+from pathlib import Path
+from typing import Any, cast
+
+import nltk
+import numpy as np
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+nltk.download("stopwords", quiet=True)
+from nltk.corpus import stopwords
+
+logger = logging.getLogger(__name__)
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
+
+SPANISH_STOPWORDS = set(stopwords.words("spanish"))
+TOKEN_RE = re.compile(r"[a-záéíóúüñ]+", re.IGNORECASE)
+
+
+def get_project_root() -> Path:
+    """Locate project root from notebook or repo root execution."""
+    cwd = Path.cwd()
+    if (cwd / "data" / "processed").exists():
+        return cwd
+    if (cwd.parent / "data" / "processed").exists():
+        return cwd.parent
+    raise FileNotFoundError("Could not find data/processed from current directory")
+
+
+def require_columns(frame: pd.DataFrame, required: list[str], label: str) -> None:
+    """Fail early when a required input schema is missing columns."""
+    missing = sorted(set(required) - set(frame.columns))
+    if missing:
+        missing_list = ", ".join(missing)
+        raise ValueError(f"{label} is missing required columns: {missing_list}")
+
+
+PROJECT_ROOT = get_project_root()
+PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+METADATA_FILE = PROCESSED_DIR / "metadata_plaintext.jsonl"
+METRICS_DIR = PROCESSED_DIR / "eda_metrics"
+METRICS_DIR.mkdir(parents=True, exist_ok=True)
+
+if not METADATA_FILE.exists():
+    raise FileNotFoundError(f"Missing metadata file: {METADATA_FILE}. Run the plaintext processing step first.")
+
+# %% [markdown]
+# ## Inputs
+#
+# Read metadata and plaintext files from `data/processed`.
+
+# %%
+records = []
+with open(METADATA_FILE, "r", encoding="utf-8") as f:
+    for line in f:
+        records.append(json.loads(line))
+
+meta = pd.DataFrame(records)
+require_columns(meta, ["filename", "url", "word_count", "char_count"], "metadata_plaintext.jsonl")
+
+txt_files = sorted(PROCESSED_DIR.glob("*.txt"))
+if not txt_files:
+    raise FileNotFoundError(f"No .txt files found in {PROCESSED_DIR}")
+
+all_texts = [p.read_text(encoding="utf-8") for p in txt_files]
+
+# %% [markdown]
+# ## 1) `meta_enriched.csv`
+#
+# Add a compact readability ratio (`chars_per_word`).
+
+# %%
+meta_enriched = meta.copy()
+meta_enriched["chars_per_word"] = (meta_enriched["char_count"] / meta_enriched["word_count"].replace(0, np.nan)).round(
+    2
+)
+meta_enriched.to_csv(METRICS_DIR / "meta_enriched.csv", index=False, encoding="utf-8")
+
+# %% [markdown]
+# ## 2) `top50_words.csv`
+#
+# Build a stopword-filtered corpus frequency table.
+
+
+# %%
+def extract_tokens(text: str) -> list[str]:
+    raw_tokens = TOKEN_RE.findall(text.lower())
+    return [token for token in raw_tokens if token not in SPANISH_STOPWORDS and len(token) >= 3]
+
+
+all_tokens: list[str] = []
+for text in all_texts:
+    all_tokens.extend(extract_tokens(text))
+
+freq = Counter(all_tokens)
+top50_df = pd.DataFrame(freq.most_common(50), columns=["word", "count"])
+
+if len(all_tokens) == 0:
+    logger.warning("No valid tokens found after filtering; writing empty top50_words.csv")
+    top50_df = pd.DataFrame(columns=["word", "count", "pct_of_corpus"])
+else:
+    top50_df["pct_of_corpus"] = (top50_df["count"] / len(all_tokens) * 100).round(3)
+
+top50_df.to_csv(METRICS_DIR / "top50_words.csv", index=False, encoding="utf-8")
+
+# %% [markdown]
+# ## 3) TF-IDF outputs
+#
+# Write both `tfidf_top30_terms.csv` and `tfidf_heatmap_sample.csv`.
+
+# %%
+vectorizer = TfidfVectorizer(
+    token_pattern=r"[a-záéíóúüñ]{3,}",
+    stop_words=list(SPANISH_STOPWORDS),
+    max_features=5000,
+    sublinear_tf=True,
+)
+
+try:
+    tfidf_matrix = cast(Any, vectorizer.fit_transform(all_texts))
+    feature_names = vectorizer.get_feature_names_out()
+
+    mean_tfidf = np.asarray(tfidf_matrix.mean(axis=0)).flatten()
+    top30_idx = mean_tfidf.argsort()[::-1][:30]
+
+    top30_terms = pd.DataFrame({
+        "term": feature_names[top30_idx],
+        "mean_tfidf": mean_tfidf[top30_idx].round(5),
+    })
+
+    rng = np.random.default_rng(seed=42)
+    sample_size = min(40, tfidf_matrix.shape[0])
+    sample_idx = np.sort(rng.choice(tfidf_matrix.shape[0], size=sample_size, replace=False))
+
+    heatmap_data = pd.DataFrame(
+        tfidf_matrix[sample_idx][:, top30_idx].toarray(),
+        columns=feature_names[top30_idx],
+    )
+    heatmap_data.insert(0, "doc_label", [txt_files[i].stem[:30] for i in sample_idx])
+except ValueError:
+    logger.warning("TF-IDF vocabulary is empty; writing empty TF-IDF artifacts")
+    top30_terms = pd.DataFrame(columns=["term", "mean_tfidf"])
+    heatmap_data = pd.DataFrame(columns=["doc_label"])
+
+top30_terms.to_csv(METRICS_DIR / "tfidf_top30_terms.csv", index=False, encoding="utf-8")
+heatmap_data.to_csv(METRICS_DIR / "tfidf_heatmap_sample.csv", index=False, encoding="utf-8")
+
+# %% [markdown]
+# ## 4) Quality slices
+#
+# Export shortest and longest documents by `word_count`.
+
+# %%
+quality_cols = ["filename", "word_count", "char_count"]
+meta_sorted_words = meta.sort_values("word_count")
+
+meta_sorted_words[quality_cols].head(10).to_csv(METRICS_DIR / "quality_shortest_10.csv", index=False, encoding="utf-8")
+meta_sorted_words[quality_cols].tail(10).to_csv(METRICS_DIR / "quality_longest_10.csv", index=False, encoding="utf-8")
