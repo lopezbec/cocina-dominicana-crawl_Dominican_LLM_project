@@ -1,16 +1,15 @@
+from datetime import datetime
 import json
 import logging
 import os
+from pathlib import Path
 import re
 import time
-from datetime import datetime
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
-from firecrawl import Firecrawl
-
 from dominican_llm_scraper.utils import LogContext, create_safe_filename, log_canonical
+from firecrawl import Firecrawl
 
 
 class Crawler:

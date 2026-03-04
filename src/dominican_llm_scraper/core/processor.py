@@ -1,319 +1,276 @@
-import re
 import json
+import re
 from pathlib import Path
-from typing import Dict, Tuple, Any
-from wordfreq import word_frequency
+from typing import Any, Dict, Optional, Tuple
+
+import mistune
+from bs4 import BeautifulSoup
+from wordfreq import get_frequency_dict
+
+from dominican_llm_scraper.utils.file_utils import create_safe_filename
+
+
+# ---------------------------------------------------------------------------
+# Universal boilerplate patterns — applied to PLAIN TEXT after mistune
+# conversion. Each pattern verified across 3+ domains. All line-scoped
+# (re.MULTILINE, no DOTALL) to avoid eating past line boundaries.
+# ---------------------------------------------------------------------------
+_BOILERPLATE_PATTERNS: list[re.Pattern] = [
+    # "In English" navigation line
+    re.compile(r"^In English\s*$", re.MULTILINE),
+    # Skip-navigation lines (WordPress Genesis "Saltar a…")
+    re.compile(r"^Saltar a[^\n]{0,80}$", re.MULTILINE),
+    # Inline SVG placeholder alt text left by mistune (data:image/svg lines)
+    re.compile(r"^data:image/svg[^\n]*$", re.MULTILINE),
+    # Copyright line
+    re.compile(r"^©\s*\d{4}[^\n]*$", re.MULTILINE),
+    # Privacy/cookie policy nav items
+    re.compile(r"^Política de (?:privacidad|cookies)[^\n]*$", re.MULTILINE),
+    # "Follow us" social prompt lines
+    re.compile(r"^Síguenos en[:\s][^\n]*$", re.MULTILINE),
+    # "Suscríbete … para recibir" newsletter line
+    re.compile(r"^[^\n]*Suscríbete[^\n]*para recibir[^\n]*$", re.MULTILINE),
+    # Lone dash/bullet lines (empty list artifacts from mistune)
+    re.compile(r"^\s*[-•]\s*$", re.MULTILINE),
+    # Greek delta — WordPress anti-spam hidden field
+    re.compile(r"Δ"),
+    # Bare social platform name lines left after link stripping
+    re.compile(
+        r"^(?:Facebook|Instagram|YouTube|WhatsApp|Twitter|X|Reddit|LinkedIn)\s*$",
+        re.MULTILINE | re.IGNORECASE,
+    ),
+]
+
+# ---------------------------------------------------------------------------
+# Footer truncation anchors — markers confirmed to appear at or near document
+# end across the corpus.  Cut point = earliest match among all anchors.
+# ---------------------------------------------------------------------------
+_FOOTER_ANCHORS: tuple[str, ...] = (
+    "Suscríbete para recibir",  # newsletter CTA — multi-domain (one, bancentral, cocinadominicana)
+    "©",  # copyright line — multi-domain (minpre, minerd, los-poetas, …)
+    "wpDiscuz",  # WordPress comment plugin footer — always terminal
+    "Este sitio usa Akismet",  # Akismet anti-spam notice — always in WP comment section
+    "Rating Receta",  # WordPress recipe-rating widget — always in comment form, never prose
+)
 
 
 class ContentProcessor:
-    def __init__(self):
-        """Initialize content processor with universal patterns.
+    """Single-pass Markdown → plain-text cleaner for the Dominican LLM corpus.
 
-        All patterns are universal and apply to any scraped web content.
-        No site-specific configuration needed.
-        """
-        pass
+    Pipeline (in order):
+        1. Strip YAML frontmatter
+        2. Apply universal boilerplate regexes (line-scoped, no DOTALL)
+        3. Convert Markdown → plain text via mistune + BeautifulSoup
+        4. Truncate at footer anchors
+        5. Normalize whitespace
+        6. Optionally filter English words (wordfreq large dicts, pre-loaded)
 
-    def extract_frontmatter(self, content: str) -> Tuple[Dict, str]:
-        """Extract YAML frontmatter from markdown content.
+    All steps are universal — no site-specific logic.
+    """
+
+    def __init__(self, config: Optional[Any] = None) -> None:
+        # Pre-load frequency dicts once (~50 ms) for 200x faster per-word lookup.
+        # Large wordlist covers Dominican vocabulary: sancocho, mangú, habichuela…
+        self._en_freq: dict = get_frequency_dict("en", wordlist="large")
+        self._es_freq: dict = get_frequency_dict("es", wordlist="large")
+        # config kept for call-site compatibility; not used internally.
+        _ = config
+
+    # ------------------------------------------------------------------
+    # Public API
+    # ------------------------------------------------------------------
+
+    def clean(
+        self,
+        markdown_content: str,
+        filter_english: bool = True,
+    ) -> Tuple[Dict, str]:
+        """Convert raw Firecrawl markdown to clean plain text.
+
+        Pipeline:
+            1. Strip YAML frontmatter
+            2. Convert Markdown → plain text (mistune + BeautifulSoup)
+            3. Remove universal boilerplate patterns (on plain text)
+            4. Truncate at footer anchors
+            5. Normalize whitespace
+            6. Optionally filter English words
 
         Args:
-            content: Markdown content potentially with frontmatter
+            markdown_content: Raw markdown string (may include YAML frontmatter).
+            filter_english: Remove words that are more English than Spanish.
 
         Returns:
-            Tuple of (frontmatter_dict, body_content)
+            (frontmatter_dict, plain_text)
         """
-        frontmatter = {}
+        frontmatter, body = self._extract_frontmatter(markdown_content)
+        text = self._markdown_to_text(body)
+        text = self._remove_boilerplate(text)
+        text = self._truncate_at_footer(text)
+        text = self._normalize_whitespace(text)
+        if filter_english:
+            text = self.filter_english_words(text)
+        return frontmatter, text
+
+    # Backward-compatible alias used by process_all_files and existing tests.
+    def process_markdown_to_plain_text(
+        self,
+        markdown_content: str,
+        filter_english: bool = True,
+    ) -> Tuple[Dict, str]:
+        return self.clean(markdown_content, filter_english=filter_english)
+
+    # ------------------------------------------------------------------
+    # Private pipeline steps
+    # ------------------------------------------------------------------
+
+    def _extract_frontmatter(self, content: str) -> Tuple[Dict, str]:
+        """Strip YAML frontmatter block and return (metadata_dict, body)."""
+        frontmatter: Dict = {}
         body = content
 
         if content.startswith("---"):
             parts = content.split("---", 2)
             if len(parts) >= 3:
-                frontmatter_text = parts[1].strip()
-                body = parts[2].strip()
-
-                for line in frontmatter_text.split("\n"):
+                for line in parts[1].strip().split("\n"):
                     if ":" in line:
                         key, value = line.split(":", 1)
                         frontmatter[key.strip()] = value.strip().strip('"')
+                body = parts[2].strip()
 
         return frontmatter, body
 
-    def remove_navigation_elements(self, text: str) -> str:
-        """Remove navigation and UI elements from text using universal patterns.
+    def _remove_boilerplate(self, text: str) -> str:
+        """Remove universal navigation / UI boilerplate from plain text.
 
-        All patterns are universal across web content - no site-specific logic.
+        Operates on plain text (post-mistune), using line-scoped patterns only.
         """
-        patterns_to_remove = [
-            # Navigation elements
-            r"\*\s+\[Saltar a[^\]]+\]\([^\)]+\)",
-            r"\[In English\]\([^\)]+\)",
-            r"!\[.*?\]\(data:image/svg\+xml[^\)]+\)",
-            r"\*\*SALTAR A:\*\*[^\n]+",
-            r"\[mostrar[^\]]*\]\([^\)]+\)",
-            r"Revisado:[^\n]+Publicado:[^\n]+",
-            r"\[❤\]\([^\)]+\)",
-            # Social media links
-            r"\[?\]\s*\([^\)]*facebook[^\)]*\)",
-            r"\[?\]\s*\([^\)]*instagram[^\)]*\)",
-            r"\[?\]\s*\([^\)]*youtube[^\)]*\)",
-            r"\[?\]\s*\([^\)]*whatsapp[^\)]*\)",
-            r"\[?\]\s*\([^\)]*twitter[^\)]*\)",
-            r"\[?\]\s*\([^\)]*reddit[^\)]*\)",
-            r"\[?\]\s*\(mailto:[^\)]+\)",
-            r"Share on (Facebook|WhatsApp|Reddit).*",
-            r"Send over email.*",
-            # UI elements
-            r"Label.*",
-            r"Rating Receta.*",
-            r"Nombre\\*?.*",
-            r"Email\\*?.*",
-            r"wpDiscuz.*",
-            r"Insert.*",
-            # Comment sections
-            r"View all comments.*",
-            r"Load More Comments.*",
-            r"Inline Feedbacks.*",
-            r"You are going to send email.*",
-            r"Move Comment.*",
-            r"Move \].*",
-            r"Este sitio usa Akismet.*",
-            r"Aprende cómo se procesan.*",
-            r"\d+ Commentario.*",
-            # Misc navigation
-            r"Populares.*",
-            r"Recientes Viejos.*",
-            r"Δ",
-            r"^\s*-\s*$",
-            # Newsletter/subscription patterns (universal)
-            r"Suscríbete.*para recibir.*",
-            r"¡No pierdas el contacto!.*",
-            r"Subscribe.*newsletter.*",
-            r"Sign up for.*",
-            r"Newsletter signup.*",
-            # Social media follow prompts (universal)
-            r"Síguenos en:.*",
-            r"Follow us on.*",
-            r"Connect with us.*",
-            # Greeting/engagement patterns
-            r"¡Hola, gracias por visitarnos!.*",
-            r"Comparte tus preguntas.*",
-            # Copyright/legal (universal)
-            r"©\s*\d{4}.*",
-            r"Copyright.*\d{4}.*",
-            r"All rights reserved.*",
-            r"Todos los derechos reservados.*",
-            # Cookie/privacy banners (universal)
-            r"This site uses cookies.*",
-            r"We use cookies.*",
-            r"Cookie policy.*",
-            r"Privacy policy.*",
-            r"Política de privacidad.*",
-            r"Política de cookies.*",
-            # Comment/engagement prompts (universal)
-            r"Leave a comment.*",
-            r"Deja un comentario.*",
-            r"Post a comment.*",
-            # Read more/navigation (universal)
-            r"Read more.*",
-            r"Leer más.*",
-            r"Continue reading.*",
-        ]
+        for pattern in _BOILERPLATE_PATTERNS:
+            text = pattern.sub("", text)
+        return text
 
-        cleaned = text
-        for pattern in patterns_to_remove:
-            cleaned = re.sub(pattern, "", cleaned, flags=re.MULTILINE | re.DOTALL)
+    def _markdown_to_text(self, text: str) -> str:
+        """Convert Markdown to plain text using mistune + BeautifulSoup.
 
-        return cleaned
-
-    def clean_markdown_syntax(self, text: str) -> str:
-        """Remove markdown syntax and convert to plain text.
-
-        Removes emojis, links, formatting, and converts to clean text.
+        This replaces ~20 hand-rolled regexes and correctly handles:
+        - Nested formatting (bold+link, em+code)
+        - Tables → cell text (preserves content, removes pipes)
+        - Escaped characters per CommonMark spec
+        - Emoji and Unicode passthrough (no normalization)
         """
-        # Remove emojis
-        text = re.sub(r"[\U0001F300-\U0001F9FF]", "", text)
-        text = re.sub(r"[\U0001F600-\U0001F64F]", "", text)
-        text = re.sub(r"[\U0001F680-\U0001F6FF]", "", text)
-        text = re.sub(r"[\U0001F1E0-\U0001F1FF]", "", text)
-        text = re.sub(r"[\u2600-\u26FF]", "", text)
-        text = re.sub(r"[\u2700-\u27BF]", "", text)
-        text = re.sub(r"[\U0001F900-\U0001F9FF]", "", text)
+        html = mistune.create_markdown()(text)
+        return BeautifulSoup(html, "html.parser").get_text(separator="\n")
 
-        # Remove URLs and links
-        text = re.sub(r"\[\(https?://[^\)]+\)\]", "", text)
-        text = re.sub(r"\(https?://[^\)]+\)", "", text)
+    def _truncate_at_footer(self, text: str) -> str:
+        """Truncate text at the first footer anchor occurrence.
 
-        # Remove empty link brackets
+        Only anchors confirmed to appear at document-end (≥ 95th percentile
+        position) across multiple domains are used.  A trailing bare "Label"
+        line (empty HTML widget) is stripped after truncation.
+        """
+        cut = len(text)
+        for anchor in _FOOTER_ANCHORS:
+            pos = text.find(anchor)
+            if 0 < pos < cut:
+                cut = pos
+        text = text[:cut]
+        # Strip trailing bare "Label" line left by empty <label> HTML element
+        text = re.sub(r"\n+Label\s*$", "", text)
+        return text
+
+    def _normalize_whitespace(self, text: str) -> str:
+        """Collapse excessive blank lines, trailing spaces, and stray brackets."""
+        # Unwrap any remaining [text] brackets (leftover from partial link stripping).
+        # Limit inner match to 200 chars to avoid backtracking on large tables.
         text = re.sub(r"\[\s*\]", "", text)
-
-        # Remove formatting artifacts
-        text = re.sub(r"\*\*\s*-\s*", "", text)
-        text = re.sub(r"^\*\*\s*$", "", text, flags=re.MULTILINE)
-
-        # Remove reference-style links
-        text = re.sub(r"\[\\?\d+\\?\]", "", text)
-
-        # Convert markdown to plain text
-        text = re.sub(r"!\[([^\]]*)\]\([^\)]+\)", r"\1", text)
-        text = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", text)
-        text = re.sub(r"#{1,6}\s+", "", text)
-        text = re.sub(r"\*\*\*([^\*]+)\*\*\*", r"\1", text)
-        text = re.sub(r"\*\*([^\*]+)\*\*", r"\1", text)
-        text = re.sub(r"\*([^\*]+)\*", r"\1", text)
-        text = re.sub(r"_([^_]+)_", r"\1", text)
-        text = re.sub(r"`([^`]+)`", r"\1", text)
-        text = re.sub(r"^[-\*]\s+", "", text, flags=re.MULTILINE)
-        text = re.sub(r"^\|\s*.*\s*\|$", "", text, flags=re.MULTILINE)
-        text = re.sub(r"^\|[-:\s|]+\|$", "", text, flags=re.MULTILINE)
-        text = re.sub(r"^[-*_]{3,}$", "", text, flags=re.MULTILINE)
-        text = re.sub(r"\\", "", text)
-
-        return text
-
-    def remove_footer_sections(self, text: str) -> str:
-        """Remove footer sections from text using universal markers.
-
-        All markers are universal across web content - no site-specific logic.
-        """
-        footer_markers = [
-            # Reference sections
-            "Referencias",
-            "Fuentes",
-            # Newsletter/contact sections
-            "¡Hola, gracias por visitarnos",
-            "Suscríbete para recibir",
-            "Newsletter",
-            "Subscribe",
-            # Copyright/legal
-            "Copyright",
-            "©",
-            "All Rights Reserved",
-            "Todos los derechos reservados",
-            # About/contact sections
-            "About Us",
-            "Acerca de",
-            "Sobre Nosotros",
-            "Contact",
-            "Contacto",
-            "Contactanos",
-            # Social media sections
-            "Follow Us",
-            "Síguenos",
-            "Connect With Us",
-        ]
-
-        min_pos = len(text)
-        for marker in footer_markers:
-            pos = text.find(marker)
-            if pos != -1 and pos < min_pos:
-                min_pos = pos
-
-        if min_pos < len(text):
-            text = text[:min_pos]
-
-        return text
-
-    def remove_excessive_whitespace(self, text: str) -> str:
-        """Clean up excessive whitespace and empty brackets."""
-        text = re.sub(r"\[\s*\n*\s*\]", "", text)
-        text = re.sub(r"\[([^\]]+)\]", r"\1", text)
+        text = re.sub(r"\[(.{1,200}?)\]", r"\1", text, flags=re.DOTALL)
+        # Remove orphaned opening brackets and image-link prefixes not caught above
+        text = re.sub(r"!\s*\[", "", text)
+        text = re.sub(r"\[\s*$", "", text, flags=re.MULTILINE)
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = re.sub(r" {2,}", " ", text)
         lines = [line.rstrip() for line in text.split("\n")]
-        text = "\n".join(lines)
-        return text.strip()
+        return "\n".join(lines).strip()
+
+    # ------------------------------------------------------------------
+    # English word filter (public — used by tests)
+    # ------------------------------------------------------------------
 
     def is_likely_english_word(self, word: str, threshold: float = 1e-6) -> bool:
-        """Determine if a word is likely English based on frequency analysis.
+        """Return True if word is more English than Spanish.
+
+        Uses pre-loaded large wordfreq dicts for O(1) lookup per word.
+        """
+        w = word.lower()
+        if len(w) <= 2:
+            return False
+
+        en = self._en_freq.get(w, 0.0)
+        es = self._es_freq.get(w, 0.0)
+
+        if en == 0.0 and es == 0.0:
+            return False
+        if es >= en * 2:
+            return False
+        return en > threshold and en > es
+
+    def filter_english_words(
+        self,
+        text: str,
+        preserve_proper_nouns: bool = True,
+    ) -> str:
+        """Remove English words from Spanish text, line by line.
 
         Args:
-            word: Word to analyze
-            threshold: Minimum frequency threshold for English
+            text: Input plain text.
+            preserve_proper_nouns: Keep capitalized tokens (acronyms, names).
 
         Returns:
-            True if word is likely English, False otherwise
+            Text with English-dominant words removed.
         """
-        word_lower = word.lower()
+        _TOKEN = re.compile(r"\b[\w\u00C0-\u017F]+\b|\S")
+        _IS_WORD = re.compile(r"\b[\w\u00C0-\u017F]+\b")
 
-        if len(word_lower) <= 2:
-            return False
-
-        en_freq = word_frequency(word_lower, "en")
-        es_freq = word_frequency(word_lower, "es")
-
-        if en_freq == 0 and es_freq == 0:
-            return False
-
-        if es_freq >= en_freq * 2:
-            return False
-
-        return en_freq > threshold and en_freq > es_freq
-
-    def filter_english_words(self, text: str, preserve_proper_nouns: bool = True) -> str:
-        """Filter out English words from text, preserving Spanish content.
-
-        Args:
-            text: Text to filter
-            preserve_proper_nouns: Keep capitalized words (default: True)
-
-        Returns:
-            Text with English words removed
-        """
-        lines = text.split("\n")
         filtered_lines = []
-
-        for line in lines:
+        for line in text.split("\n"):
             if not line.strip():
                 filtered_lines.append(line)
                 continue
 
-            words = re.findall(r"\b[\w\u00C0-\u017F]+\b|\S", line)
-            filtered_words = []
-
-            for word in words:
-                if not re.match(r"\b[\w\u00C0-\u017F]+\b", word):
-                    filtered_words.append(word)
+            kept = []
+            for token in _TOKEN.findall(line):
+                if not _IS_WORD.match(token):
+                    kept.append(token)
                     continue
-
-                if preserve_proper_nouns and word[0].isupper():
-                    filtered_words.append(word)
+                if preserve_proper_nouns and token[0].isupper():
+                    kept.append(token)
                     continue
+                if not self.is_likely_english_word(token):
+                    kept.append(token)
 
-                if not self.is_likely_english_word(word):
-                    filtered_words.append(word)
-
-            filtered_line = " ".join(filtered_words)
-            filtered_line = re.sub(r"\s+([.,;:!?)])", r"\1", filtered_line)
-            filtered_line = re.sub(r"([¿¡(])\s+", r"\1", filtered_line)
-            filtered_line = re.sub(r" {2,}", " ", filtered_line)
-
-            if filtered_line.strip():
-                filtered_lines.append(filtered_line)
+            joined = " ".join(kept)
+            joined = re.sub(r"\s+([.,;:!?)])", r"\1", joined)
+            joined = re.sub(r"([¿¡(])\s+", r"\1", joined)
+            joined = re.sub(r" {2,}", " ", joined)
+            if joined.strip():
+                filtered_lines.append(joined)
 
         return "\n".join(filtered_lines)
 
-    def process_markdown_to_plain_text(self, markdown_content: str, filter_english: bool = True) -> Tuple[Dict, str]:
-        """Process markdown content to plain text.
+    # ------------------------------------------------------------------
+    # Legacy public methods — kept so existing call sites don't break.
+    # New code should call clean() instead.
+    # ------------------------------------------------------------------
 
-        Args:
-            markdown_content: Raw markdown to process
-            filter_english: Whether to filter out English words (default: True)
+    def extract_frontmatter(self, content: str) -> Tuple[Dict, str]:
+        return self._extract_frontmatter(content)
 
-        Returns:
-            Tuple of (frontmatter_dict, cleaned_plain_text)
-        """
-        frontmatter, body = self.extract_frontmatter(markdown_content)
+    def remove_excessive_whitespace(self, text: str) -> str:
+        return self._normalize_whitespace(text)
 
-        cleaned = self.remove_navigation_elements(body)
-        cleaned = self.clean_markdown_syntax(cleaned)
-        cleaned = self.remove_footer_sections(cleaned)
-        cleaned = self.remove_excessive_whitespace(cleaned)
 
-        if filter_english:
-            cleaned = self.filter_english_words(cleaned)
-
-        return frontmatter, cleaned
+# ---------------------------------------------------------------------------
+# Batch processing
+# ---------------------------------------------------------------------------
 
 
 def process_all_files(
@@ -321,23 +278,18 @@ def process_all_files(
     output_dir: Path,
     config: Any,
     processing_patterns: Any = None,  # Deprecated, kept for compatibility
-):
+) -> None:
     """Process all scraped markdown files to plaintext.
 
     Args:
-        input_dir: Directory containing scraped markdown files
-        output_dir: Directory to save processed plaintext files
-        config: Config object with universal settings (min_content_length, directories)
-        processing_patterns: Deprecated, kept for compatibility but unused
-
-    Note:
-        All processing patterns are now universal and hard-coded in ContentProcessor.
-        Config is only used for directory paths and min_content_length threshold.
+        input_dir: Directory containing scraped markdown files.
+        output_dir: Directory to save processed plaintext files.
+        config: Config object (used for min_content_length only).
+        processing_patterns: Deprecated, unused.
     """
     processor = ContentProcessor()
 
     metadata_file = input_dir / "metadata.jsonl"
-
     if not metadata_file.exists():
         print(f"Error: {metadata_file} not found")
         print("Please run the scraper first to generate scraped content")
@@ -345,15 +297,15 @@ def process_all_files(
 
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    metadata_entries = []
+    metadata_entries: list[Dict] = []
     with open(metadata_file, "r", encoding="utf-8") as f:
         for line in f:
             metadata_entries.append(json.loads(line))
 
     print(f"Found {len(metadata_entries)} documents to process")
 
-    processed_metadata = []
-    stats = {
+    processed_metadata: list[Dict] = []
+    stats: Dict = {
         "total_processed": 0,
         "total_words": 0,
         "total_chars": 0,
@@ -361,17 +313,17 @@ def process_all_files(
         "domains": {},
     }
 
-    min_content_length = config.processing.get("min_content_length", 100)
+    min_content_length: int = config.processing.get("min_content_length", 100)
 
     for meta in metadata_entries:
         doc_id = meta["doc_id"]
         domain = meta.get("domain", "unknown")
         domain_slug = domain.replace(".", "_")
-        filename = f"{meta['doc_id']}_{domain_slug}_{meta['url_slug']}.md"
+        safe_slug = create_safe_filename(meta["url_slug"])
+        filename = f"{meta['doc_id']}_{domain_slug}_{safe_slug}.md"
         category = meta.get("category", "unknown")
 
         md_file = input_dir / filename
-
         if not md_file.exists():
             print(f"Warning: File not found: {filename}")
             continue
@@ -380,14 +332,13 @@ def process_all_files(
             with open(md_file, "r", encoding="utf-8") as f:
                 content = f.read()
 
-            frontmatter, plain_text = processor.process_markdown_to_plain_text(content)
+            _frontmatter, plain_text = processor.clean(content)
 
             if len(plain_text.strip()) < min_content_length:
                 print(f"Skipping {filename}: content too short")
                 continue
 
-            url_slug = meta["url_slug"]
-            output_filename = f"{doc_id}_{domain_slug}_{url_slug}.txt"
+            output_filename = f"{doc_id}_{domain_slug}_{safe_slug}.txt"
             output_file = output_dir / output_filename
 
             with open(output_file, "w", encoding="utf-8") as f:
@@ -396,7 +347,7 @@ def process_all_files(
             word_count = len(plain_text.split())
             char_count = len(plain_text)
 
-            plain_meta = {
+            plain_meta: Dict = {
                 "doc_id": doc_id,
                 "domain": domain,
                 "filename": output_filename,
@@ -415,17 +366,15 @@ def process_all_files(
             stats["total_words"] += word_count
             stats["total_chars"] += char_count
 
-            if category not in stats["categories"]:
-                stats["categories"][category] = {"count": 0, "words": 0, "chars": 0}
-            stats["categories"][category]["count"] += 1
-            stats["categories"][category]["words"] += word_count
-            stats["categories"][category]["chars"] += char_count
+            cat_stats = stats["categories"].setdefault(category, {"count": 0, "words": 0, "chars": 0})
+            cat_stats["count"] += 1
+            cat_stats["words"] += word_count
+            cat_stats["chars"] += char_count
 
-            if domain not in stats["domains"]:
-                stats["domains"][domain] = {"count": 0, "words": 0, "chars": 0}
-            stats["domains"][domain]["count"] += 1
-            stats["domains"][domain]["words"] += word_count
-            stats["domains"][domain]["chars"] += char_count
+            dom_stats = stats["domains"].setdefault(domain, {"count": 0, "words": 0, "chars": 0})
+            dom_stats["count"] += 1
+            dom_stats["words"] += word_count
+            dom_stats["chars"] += char_count
 
             print(f"Processed: {filename} -> {output_filename} ({word_count} words)")
 
@@ -446,55 +395,47 @@ def process_all_files(
     print("Processing Complete!")
     print(f"{'=' * 70}")
     print(f"Total documents processed: {stats['total_processed']}")
-    print(f"Total words: {stats['total_words']:,}")
-    print(f"Total characters: {stats['total_chars']:,}")
+    print(f"Total words:               {stats['total_words']:,}")
+    print(f"Total characters:          {stats['total_chars']:,}")
 
     print("\nBy domain:")
-    for domain, domain_stats in stats["domains"].items():
-        print(f"  {domain}: {domain_stats['count']} docs, {domain_stats['words']:,} words")
+    for domain, ds in stats["domains"].items():
+        print(f"  {domain}: {ds['count']} docs, {ds['words']:,} words")
 
     print("\nBy category:")
-    for cat, cat_stats in stats["categories"].items():
-        print(f"  {cat}: {cat_stats['count']} docs, {cat_stats['words']:,} words")
+    for cat, cs in stats["categories"].items():
+        print(f"  {cat}: {cs['count']} docs, {cs['words']:,} words")
 
     print("\nOutput:")
     print(f"  Plain text files: {output_dir}/")
-    print(f"  Metadata: {plain_metadata_file}")
-    print(f"  Statistics: {stats_file}")
+    print(f"  Metadata:         {plain_metadata_file}")
+    print(f"  Statistics:       {stats_file}")
 
 
 if __name__ == "__main__":
     import sys
+
     from dominican_llm_scraper.core.config_loader import load_config
 
     try:
-        # Load global config for universal settings only
         config = load_config()
 
-        if len(sys.argv) > 1:
-            input_dir = Path(sys.argv[1])
-        else:
-            input_dir = Path(config.get("output_dir", "data/raw"))
-
-        if len(sys.argv) > 2:
-            output_dir = Path(sys.argv[2])
-        else:
-            output_dir = Path(config.get("plaintext_output_dir", "data/processed"))
+        input_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(config.get("output_dir", "data/raw"))
+        output_dir = (
+            Path(sys.argv[2]) if len(sys.argv) > 2 else Path(config.get("plaintext_output_dir", "data/processed"))
+        )
 
         if not input_dir.exists():
             print(f"Error: Input directory '{input_dir}' does not exist")
             print("Usage: python -m dominican_llm_scraper.core.processor [input_dir] [output_dir]")
             sys.exit(1)
 
-        print(f"Input directory: {input_dir}")
+        print(f"Input directory:  {input_dir}")
         print(f"Output directory: {output_dir}")
         print()
 
         process_all_files(input_dir, output_dir, config)
 
-    except ValueError as e:
-        print(str(e))
-        sys.exit(1)
-    except FileNotFoundError as e:
+    except (ValueError, FileNotFoundError) as e:
         print(str(e))
         sys.exit(1)

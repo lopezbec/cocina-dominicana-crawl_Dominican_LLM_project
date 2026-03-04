@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
+import yaml
 import logging
-import sys
 from pathlib import Path
+import sys
 
 from dominican_llm_scraper.core.config_loader import (
-    load_urls_config,
     load_config,
+    load_urls_config,
     update_url_processed_status,
 )
 from dominican_llm_scraper.core.crawler import Crawler
@@ -63,7 +64,6 @@ def scrape_command(args):
             print(f"Error: File not found: {args.urls_file}")
             return 1
 
-        import yaml
 
         with open(urls_file, "r", encoding="utf-8") as f:
             urls_config = yaml.safe_load(f)
