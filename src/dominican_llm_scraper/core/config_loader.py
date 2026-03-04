@@ -180,16 +180,12 @@ def load_config(domain: Optional[str] = None) -> SiteConfig:
     else:
         global_config = {}
 
-    # If no domain specified, return global config
     if not domain:
         return SiteConfig(global_config)
 
-    # Auto-generate base_url from domain or URL
     if domain.startswith("http://") or domain.startswith("https://"):
-        # Full URL provided - preserve protocol AND netloc (including www)
         parsed = urlparse(domain)
         base_url = f"{parsed.scheme}://{parsed.netloc}"
-        # Extract clean domain (without www) for config directory lookup
         domain = parsed.netloc
         if domain.startswith("www."):
             domain = domain[4:]

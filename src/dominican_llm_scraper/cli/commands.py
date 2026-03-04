@@ -64,7 +64,6 @@ def scrape_command(args):
             print(f"Error: File not found: {args.urls_file}")
             return 1
 
-
         with open(urls_file, "r", encoding="utf-8") as f:
             urls_config = yaml.safe_load(f)
 
@@ -179,7 +178,7 @@ def scrape_command(args):
 
 def process_to_plaintext(args):
     """Process scraped markdown to plaintext."""
-    from dominican_llm_scraper.core.processor import process_all_files
+    from dominican_llm_scraper.core.processor.batch import process_all_files
     from dominican_llm_scraper.core.config_loader import load_config
 
     # Load global config for processing settings
@@ -197,7 +196,6 @@ def process_to_plaintext(args):
     print(f"Input: {input_dir}")
     print(f"Output: {output_dir}\n")
 
-    # Processing patterns are now in global config
     process_all_files(input_dir, output_dir, config, processing_patterns=None)
     return 0
 
