@@ -21,5 +21,4 @@ filters:
   - twitter\.com
   - '#'
 processing:
-  filter_english: true
   min_content_length: 100
