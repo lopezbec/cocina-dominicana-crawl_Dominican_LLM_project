@@ -78,10 +78,12 @@ total_words = meta["word_count"].sum()
 total_chars = meta["char_count"].sum()
 total_urls = meta["url"].nunique()
 
-summary = pd.DataFrame({
-    "Metric": ["Total files (.txt)", "Total words", "Total characters", "Unique URLs"],
-    "Value": [f"{n_files:,}", f"{total_words:,}", f"{total_chars:,}", f"{total_urls:,}"],
-})
+summary = pd.DataFrame(
+    {
+        "Metric": ["Total files (.txt)", "Total words", "Total characters", "Unique URLs"],
+        "Value": [f"{n_files:,}", f"{total_words:,}", f"{total_chars:,}", f"{total_urls:,}"],
+    }
+)
 
 display(summary)
 
