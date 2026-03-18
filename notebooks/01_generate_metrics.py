@@ -113,9 +113,19 @@ def extract_tokens(text: str) -> list[str]:
     return [token for token in raw_tokens if token not in SPANISH_STOPWORDS and len(token) >= 3]
 
 
-all_tokens: list[str] = []
-for text in all_texts:
-    all_tokens.extend(extract_tokens(text))
+def build_top_ngrams(token_lists: list[list[str]], n: int, top_k: int = 20) -> pd.DataFrame:
+    ngrams = [" ".join(tokens[i : i + n]) for tokens in token_lists for i in range(len(tokens) - n + 1)]
+    if not ngrams:
+        return pd.DataFrame(columns=["ngram", "count", "pct_of_corpus"])
+
+    freq = Counter(ngrams)
+    top_df = pd.DataFrame(freq.most_common(top_k), columns=["ngram", "count"])
+    top_df["pct_of_corpus"] = (top_df["count"] / len(ngrams) * 100).round(3)
+    return top_df
+
+
+filtered_token_lists = [extract_tokens(text) for text in all_texts]
+all_tokens = [token for tokens in filtered_token_lists for token in tokens]
 
 freq = Counter(all_tokens)
 top50_df = pd.DataFrame(freq.most_common(50), columns=["word", "count"])
@@ -129,7 +139,16 @@ else:
 top50_df.to_csv(METRICS_DIR / "top50_words.csv", index=False, encoding="utf-8")
 
 # %% [markdown]
-# ## 3) TF-IDF outputs
+# ## 3) `top20_bigrams.csv` and `top20_trigrams.csv`
+#
+# Build corpus-level n-gram tables from the filtered tokens.
+
+# %%
+build_top_ngrams(filtered_token_lists, n=2).to_csv(METRICS_DIR / "top20_bigrams.csv", index=False, encoding="utf-8")
+build_top_ngrams(filtered_token_lists, n=3).to_csv(METRICS_DIR / "top20_trigrams.csv", index=False, encoding="utf-8")
+
+# %% [markdown]
+# ## 4) TF-IDF outputs
 #
 # Write both `tfidf_top30_terms.csv` and `tfidf_heatmap_sample.csv`.
 
@@ -148,10 +167,12 @@ try:
     mean_tfidf = np.asarray(tfidf_matrix.mean(axis=0)).flatten()
     top30_idx = mean_tfidf.argsort()[::-1][:30]
 
-    top30_terms = pd.DataFrame({
-        "term": feature_names[top30_idx],
-        "mean_tfidf": mean_tfidf[top30_idx].round(5),
-    })
+    top30_terms = pd.DataFrame(
+        {
+            "term": feature_names[top30_idx],
+            "mean_tfidf": mean_tfidf[top30_idx].round(5),
+        }
+    )
 
     rng = np.random.default_rng(seed=42)
     sample_size = min(40, tfidf_matrix.shape[0])
@@ -171,7 +192,7 @@ top30_terms.to_csv(METRICS_DIR / "tfidf_top30_terms.csv", index=False, encoding=
 heatmap_data.to_csv(METRICS_DIR / "tfidf_heatmap_sample.csv", index=False, encoding="utf-8")
 
 # %% [markdown]
-# ## 4) Quality slices
+# ## 5) Quality slices
 #
 # Export shortest and longest documents by `word_count`.
 

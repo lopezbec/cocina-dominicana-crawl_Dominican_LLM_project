@@ -48,6 +48,8 @@ plt.rcParams["figure.figsize"] = (10, 5)
 required_files = [
     "meta_enriched.csv",
     "top50_words.csv",
+    "top20_bigrams.csv",
+    "top20_trigrams.csv",
     "tfidf_top30_terms.csv",
     "tfidf_heatmap_sample.csv",
     "quality_shortest_10.csv",
@@ -64,10 +66,19 @@ if missing_files:
 # %%
 meta = pd.read_csv(METRICS_DIR / "meta_enriched.csv", encoding="utf-8")
 top50_df = pd.read_csv(METRICS_DIR / "top50_words.csv", encoding="utf-8")
+top20_bigrams = pd.read_csv(METRICS_DIR / "top20_bigrams.csv", encoding="utf-8")
+top20_trigrams = pd.read_csv(METRICS_DIR / "top20_trigrams.csv", encoding="utf-8")
 top30_terms = pd.read_csv(METRICS_DIR / "tfidf_top30_terms.csv", encoding="utf-8")
 heatmap_df = pd.read_csv(METRICS_DIR / "tfidf_heatmap_sample.csv", encoding="utf-8")
 shortest_10 = pd.read_csv(METRICS_DIR / "quality_shortest_10.csv", encoding="utf-8")
 longest_10 = pd.read_csv(METRICS_DIR / "quality_longest_10.csv", encoding="utf-8")
+
+
+def get_ngram_label_column(frame: pd.DataFrame) -> str:
+    if "ngram" in frame.columns:
+        return "ngram"
+    return next(column for column in frame.columns if column != "count")
+
 
 # %% [markdown]
 # ## Corpus overview
@@ -164,7 +175,7 @@ plt.show()
 # %%
 fig, ax = plt.subplots(figsize=(10, 4))
 chars_per_word_values = [float(value) for value in meta["chars_per_word"].dropna().tolist()]
-chars_per_word_mean = sum(chars_per_word_values) / len(chars_per_word_values)
+chars_per_word_mean = float(np.mean(chars_per_word_values)) if chars_per_word_values else 0.0
 ax.hist(chars_per_word_values, bins=40, color="mediumpurple", edgecolor="white", linewidth=0.4)
 ax.axvline(
     chars_per_word_mean,
@@ -194,6 +205,41 @@ ax.bar_label(bars, fmt="{:,.0f}", padding=4, fontsize=8)
 ax.set_title("Top 50 Words by Frequency (Spanish stopwords removed)")
 ax.set_xlabel("Count")
 ax.set_ylabel("Word")
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+plt.tight_layout()
+plt.show()
+
+# %% [markdown]
+# ## N-grams
+
+# %%
+display(top20_bigrams)
+
+# %%
+bigram_label_col = get_ngram_label_column(top20_bigrams)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+bars = ax.barh(top20_bigrams[bigram_label_col][::-1], top20_bigrams["count"][::-1], color="steelblue")
+ax.bar_label(bars, fmt="{:,.0f}", padding=4, fontsize=8)
+ax.set_title("Top 20 Bigrams by Frequency")
+ax.set_xlabel("Count")
+ax.set_ylabel("Bigram")
+ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
+plt.tight_layout()
+plt.show()
+
+# %%
+display(top20_trigrams)
+
+# %%
+trigram_label_col = get_ngram_label_column(top20_trigrams)
+
+fig, ax = plt.subplots(figsize=(12, 6))
+bars = ax.barh(top20_trigrams[trigram_label_col][::-1], top20_trigrams["count"][::-1], color="mediumseagreen")
+ax.bar_label(bars, fmt="{:,.0f}", padding=4, fontsize=8)
+ax.set_title("Top 20 Trigrams by Frequency")
+ax.set_xlabel("Count")
+ax.set_ylabel("Trigram")
 ax.xaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f"{int(x):,}"))
 plt.tight_layout()
 plt.show()

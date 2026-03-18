@@ -47,3 +47,4 @@ config.yml
 scraping.log
 .DS_Store
 .firecrawl/
+.cache/
