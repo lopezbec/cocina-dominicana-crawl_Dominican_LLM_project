@@ -1,5 +1,7 @@
+run_dir: run
 output_dir: data/raw
 plaintext_output_dir: data/processed
+log_file: run/logs/scraping.log
 crawler:
   max_depth: 2
   delay_seconds: 5
@@ -8,17 +10,17 @@ crawler:
   base_retry_delay: 2
 filters:
   exclude_patterns:
-  - wp-content
-  - wp-json
-  - xmlrpc
-  - feed
-  - comments
-  - \.(jpg|jpeg|png|gif|svg|webp|ico|xlsx|xls)$
-  - facebook\.com
-  - instagram\.com
-  - youtube\.com
-  - pinterest\.com
-  - twitter\.com
-  - '#'
+    - wp-content
+    - wp-json
+    - xmlrpc
+    - feed
+    - comments
+    - \.(jpg|jpeg|png|gif|svg|webp|ico|xlsx|xls|sav)$
+    - facebook\.com
+    - instagram\.com
+    - youtube\.com
+    - pinterest\.com
+    - twitter\.com
+    - "#"
 processing:
   min_content_length: 100

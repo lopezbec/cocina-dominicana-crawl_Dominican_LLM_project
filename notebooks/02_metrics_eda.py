@@ -23,6 +23,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mticker
+import numpy as np
 import pandas as pd
 import seaborn as sns
 from IPython.display import Markdown, display
@@ -70,7 +71,6 @@ longest_10 = pd.read_csv(METRICS_DIR / "quality_longest_10.csv", encoding="utf-8
 
 # %% [markdown]
 # ## Corpus overview
-# This section establishes the scale of the corpus before drilling into distributional details.
 
 # %%
 n_files = len(meta)
@@ -91,8 +91,6 @@ desc.index.name = "stat"
 display(desc)
 
 # %%
-import matplotlib.pyplot as plt
-
 fig, axes = plt.subplots(1, 2, figsize=(14, 5))
 
 p95_words = meta["word_count"].quantile(0.95)
@@ -102,8 +100,11 @@ n_beyond_chars = int((meta["char_count"] > p95_chars).sum())
 wc_clipped = meta.loc[meta["word_count"] <= p95_words, "word_count"]
 cc_clipped = meta.loc[meta["char_count"] <= p95_chars, "char_count"]
 
+wc_bins = np.histogram_bin_edges(wc_clipped, bins="fd")
+cc_bins = np.histogram_bin_edges(cc_clipped, bins="fd")
+
 # --- Plot 1: Word Count ---
-axes[0].hist(wc_clipped, bins=60, color="steelblue", edgecolor="white", linewidth=0.4)
+axes[0].hist(wc_clipped, bins=wc_bins, color="steelblue", edgecolor="white", linewidth=0.4)
 axes[0].axvline(
     meta["word_count"].median(),
     color="tomato",
@@ -111,14 +112,25 @@ axes[0].axvline(
     linewidth=1.5,
     label=f"Median {meta['word_count'].median():,.0f}",
 )
-axes[0].set_title(f"Word Count - 95th Percentile View\n(5% of docs, N={n_beyond_words}, beyond cutoff)", fontsize=11)
+axes[0].axvline(
+    p95_words,
+    color="black",
+    linestyle=":",
+    linewidth=1.2,
+    label=f"P95 {p95_words:,.0f}",
+)
+sns.kdeplot(wc_clipped, ax=axes[0], color="black", linewidth=1.0)
+axes[0].set_title(
+    f"Word Count - 95th Percentile View\nP95 cutoff, 5% of docs (N={n_beyond_words}) beyond",
+    fontsize=11,
+)
 axes[0].set_xlabel("Words")
 axes[0].set_ylabel("Number of Documents")
 axes[0].set_xlim(0, p95_words)
 axes[0].legend()
 
 # --- Plot 2: Character Count ---
-axes[1].hist(cc_clipped, bins=60, color="mediumseagreen", edgecolor="white", linewidth=0.4)
+axes[1].hist(cc_clipped, bins=cc_bins, color="mediumseagreen", edgecolor="white", linewidth=0.4)
 axes[1].axvline(
     meta["char_count"].median(),
     color="tomato",
@@ -126,8 +138,17 @@ axes[1].axvline(
     linewidth=1.5,
     label=f"Median {meta['char_count'].median():,.0f}",
 )
+axes[1].axvline(
+    p95_chars,
+    color="black",
+    linestyle=":",
+    linewidth=1.2,
+    label=f"P95 {p95_chars:,.0f}",
+)
+sns.kdeplot(cc_clipped, ax=axes[1], color="black", linewidth=1.0)
 axes[1].set_title(
-    f"Character Count - 95th Percentile View\n(5% of docs, N={n_beyond_chars}, beyond cutoff)", fontsize=11
+    f"Character Count - 95th Percentile View\nP95 cutoff, 5% of docs (N={n_beyond_chars}) beyond",
+    fontsize=11,
 )
 axes[1].set_xlabel("Characters")
 axes[1].set_ylabel("Number of Documents")
@@ -159,7 +180,6 @@ plt.show()
 
 # %% [markdown]
 # ## Word frequency
-# The most frequent terms provide a quick signal of domain vocabulary and token distribution.
 
 # %%
 display(top50_df.head(15))
@@ -178,7 +198,6 @@ plt.show()
 
 # %% [markdown]
 # ## TF-IDF
-# TF-IDF highlights terms that are informative across documents, not only frequent globally.
 
 # %%
 display(top30_terms.head(15))
@@ -216,7 +235,6 @@ else:
 
 # %% [markdown]
 # ## Data quality notes
-# Reviewing extreme document lengths helps spot scraping artifacts and unusual pages.
 
 # %%
 display(shortest_10)

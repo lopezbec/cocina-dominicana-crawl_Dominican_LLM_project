@@ -404,8 +404,10 @@ The scraper uses a hierarchical configuration system with three levels:
 Default settings for all sites:
 
 ```yaml
+run_dir: run
 output_dir: data/raw
 plaintext_output_dir: data/processed
+log_file: run/logs/scraping.log
 
 crawler:
   max_depth: 2
@@ -425,6 +427,35 @@ filters:
 processing:
   filter_english: true      # Filter out English words from content
   min_content_length: 100   # Minimum content length in characters
+```
+
+### Run Artifacts and Cleanup
+
+Runtime outputs are centralized under the `run/` directory by default:
+
+- `run/logs/scraping.log` for logs
+
+Scraped data remains under `data/`:
+
+- `data/raw` for scraped markdown
+- `data/processed` for plaintext output
+
+You can adjust these paths in `config/config.yml`.
+
+To clean local caches and run artifacts:
+
+```bash
+make tidy
+```
+
+### External Build Artifacts
+
+Build wheels/sdists into an external directory to keep the repo clean:
+
+```bash
+uv build --out-dir ../build-artifacts
+# or
+python -m build --outdir ../build-artifacts
 ```
 
 **Note:** Navigation and footer removal patterns are universal and hard-coded in `ContentProcessor`. No site-specific configuration needed.

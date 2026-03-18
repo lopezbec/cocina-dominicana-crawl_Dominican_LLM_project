@@ -29,6 +29,8 @@ dependencies = [
   "jupyter>=1.1.1",
   "ipykernel>=6.31.0",
   "firecrawl-py>=4.18.0",
+  "reportlab>=4.4.10",
+  "pip>=26.0.1",
 ]
 
 [build-system]
@@ -41,6 +43,12 @@ src = ["src"]
 
 [tool.uv]
 package = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dominican_llm_scraper"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/dominican_llm_scraper", "readme.markdown", "config", "docs", "makefile"]
 
 [project.urls]
 Homepage = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"

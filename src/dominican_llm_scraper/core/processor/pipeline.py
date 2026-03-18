@@ -14,5 +14,5 @@ def process_markdown_to_plain_text(markdown_content: str) -> Tuple[Dict, str]:
     text = normalize_whitespace(text)
     text = join_wrapped_lines(text)
     text = cleanup_inline_punctuation(text)
-    text = filter_english_words(text)
+    # text = filter_english_words(text)
     return {}, text

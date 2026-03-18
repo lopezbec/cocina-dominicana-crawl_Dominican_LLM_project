@@ -8,7 +8,8 @@ import time
 from typing import Any, Dict, List, Optional, Set
 from urllib.parse import urlparse
 
-from dominican_llm_scraper.utils import LogContext, create_safe_filename, log_canonical
+from dominican_llm_scraper.utils.file_utils import create_safe_filename
+from dominican_llm_scraper.utils.logging import LogContext, log_canonical
 from firecrawl import Firecrawl
 
 

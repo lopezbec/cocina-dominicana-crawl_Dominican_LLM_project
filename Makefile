@@ -1,6 +1,6 @@
 .PHONY: help setup install firecrawl-start firecrawl-stop firecrawl-restart \
         firecrawl-status firecrawl-logs firecrawl-test scrape scrape-url \
-        scrape-force process clean
+        scrape-force process clean tidy
 
 .DEFAULT_GOAL := help
 
@@ -48,6 +48,7 @@ help:
 	@echo ""
 	@echo "  CLEANUP"
 	@echo "    make clean                    Remove Firecrawl containers and volumes"
+	@echo "    make tidy                     Remove Python cache/build/run artifacts"
 	@echo ""
 	@echo "  DIRECT CLI USAGE"
 	@echo "    uv run python -m dominican_llm_scraper scrape [urls...]"
@@ -161,13 +162,6 @@ scrape-force:
 
 # Processing Commands
 process:
-	@if [ ! -d data/raw ]; then \
-		echo ""; \
-		echo "Error: data/raw directory not found"; \
-		echo "Run scraping commands first to generate content"; \
-		echo ""; \
-		exit 1; \
-	fi
 	@$(PYTHON) -m dominican_llm_scraper process
 
 # Cleanup
@@ -179,3 +173,10 @@ clean:
 	@echo "Removing Firecrawl containers and volumes..."
 	@cd $(FIRECRAWL_DIR) && $(DOCKER_COMPOSE) down -v
 	@echo "✓ Firecrawl containers and volumes removed"
+
+tidy:
+	@echo "Removing Python cache/build/run artifacts..."
+	@find . -type d -name "__pycache__" -prune -exec rm -rf {} +
+	@find . -type f -name "*.pyc" -delete
+	@rm -rf .ruff_cache .pytest_cache build dist *.egg-info run
+	@echo "✓ Python cache/build/run artifacts removed"

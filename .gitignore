@@ -21,6 +21,7 @@ uv.lock
 
 # Runtime data - keep structure, ignore content
 data/**
+run/**
 
 # Build artifacts
 dist/
@@ -45,3 +46,4 @@ utils.py
 config.yml
 scraping.log
 .DS_Store
+.firecrawl/

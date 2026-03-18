@@ -125,12 +125,15 @@ class SpringBootFormatter(logging.Formatter):
         return log_line
 
 
-def setup_logging(env: Optional[str] = None) -> None:
+def setup_logging(env: Optional[str] = None, log_file: Optional[str] = None) -> None:
     """Initialize logging system. Call once at application startup."""
     if env is None:
         env = os.getenv("APP_ENV", "dev").lower()
 
     log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+
+    file_path = log_file or "scraping.log"
+    os.makedirs(os.path.dirname(file_path) or ".", exist_ok=True)
 
     config = {
         "version": 1,
@@ -164,7 +167,7 @@ def setup_logging(env: Optional[str] = None) -> None:
                 "class": "logging.FileHandler",
                 "formatter": "springboot_plain",
                 "level": "INFO",
-                "filename": "scraping.log",
+                "filename": file_path,
                 "encoding": "utf-8",
             },
         },

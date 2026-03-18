@@ -11,7 +11,7 @@ from dominican_llm_scraper.core.config_loader import (
     update_url_processed_status,
 )
 from dominican_llm_scraper.core.crawler import Crawler
-from dominican_llm_scraper.utils import log_canonical, setup_logging
+from dominican_llm_scraper.utils.logging import log_canonical, setup_logging
 
 
 def scrape_command(args):
@@ -201,29 +201,29 @@ def process_to_plaintext(args):
 
 
 def main():
-    # Initialize logging FIRST, before any other imports or operations
-    setup_logging()
+    config = load_config()
+    setup_logging(log_file=config.get("log_file"))
 
     parser = argparse.ArgumentParser(
         description="Multi-Domain Web Scraper using Firecrawl",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Examples:
-  Scrape all unprocessed URLs from config/urls.yml:
-    %(prog)s scrape
+                Examples:
+                Scrape all unprocessed URLs from config/urls.yml:
+                    %(prog)s scrape
 
-  Scrape specific URLs:
-    %(prog)s scrape https://example.com/page1 https://example.com/page2
+                Scrape specific URLs:
+                    %(prog)s scrape https://example.com/page1 https://example.com/page2
 
-  Scrape from custom URLs file:
-    %(prog)s scrape --urls-file custom_urls.yml
+                Scrape from custom URLs file:
+                    %(prog)s scrape --urls-file custom_urls.yml
 
-  Force reprocess all URLs:
-    %(prog)s scrape --force
+                Force reprocess all URLs:
+                    %(prog)s scrape --force
 
-  Process to plaintext:
-    %(prog)s process
-        """,
+                Process to plaintext:
+                    %(prog)s process
+            """,
     )
 
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
