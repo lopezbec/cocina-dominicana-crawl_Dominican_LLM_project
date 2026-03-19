@@ -48,3 +48,5 @@ scraping.log
 .DS_Store
 .firecrawl/
 .cache/
+.opencode/
+reports/

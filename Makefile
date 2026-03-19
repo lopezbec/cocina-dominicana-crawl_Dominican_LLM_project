@@ -1,6 +1,6 @@
 .PHONY: help setup install firecrawl-start firecrawl-stop firecrawl-restart \
         firecrawl-status firecrawl-logs firecrawl-test scrape scrape-url \
-        scrape-force process clean tidy
+        scrape-force process compare-pdf clean tidy
 
 .DEFAULT_GOAL := help
 
@@ -45,6 +45,7 @@ help:
 	@echo ""
 	@echo "  PROCESSING"
 	@echo "    make process                  Convert markdown to plaintext"
+	@echo "    make compare-pdf IDS=<ids>    Create raw vs processed PDF report"
 	@echo ""
 	@echo "  CLEANUP"
 	@echo "    make clean                    Remove Firecrawl containers and volumes"
@@ -163,6 +164,18 @@ scrape-force:
 # Processing Commands
 process:
 	@$(PYTHON) -m dominican_llm_scraper process
+
+compare-pdf:
+	@if [ -z "$(IDS)" ]; then \
+		echo ""; \
+		echo "Error: IDS parameter required"; \
+		echo "Usage: make compare-pdf IDS=0002,0080,0809 [OUTPUT=reports/comparison.pdf]"; \
+		echo ""; \
+		exit 1; \
+	fi
+	@$(UV) sync
+	@$(PYTHON) -m playwright install chromium
+	@$(PYTHON) scripts/generate_comparison_pdf.py --ids "$(IDS)" $(if $(OUTPUT),--output "$(OUTPUT)")
 
 # Cleanup
 clean:
