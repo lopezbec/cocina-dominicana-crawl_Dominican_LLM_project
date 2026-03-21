@@ -1,7 +1,8 @@
 import json
 from pathlib import Path
 
-from dominican_llm_scraper.core.processor import process_markdown_to_plain_text
+from dominican_llm_scraper.core.processor.pipeline import process_markdown_to_plain_text
+from dominican_llm_scraper.core.processor.step_06_english_filter import filter_english_words
 
 
 def test_markdown_to_plain_text_basic() -> None:
@@ -26,8 +27,8 @@ def test_generic_noise_removal_lines() -> None:
 
 
 def test_english_filter_mixed_text() -> None:
-    markdown = "Esta receta tiene rice and beans. OK, eso esta bien."
-    _meta, plain = process_markdown_to_plain_text(markdown)
+    text = "Esta receta tiene rice and beans. OK, eso esta bien."
+    plain = filter_english_words(text)
     assert "rice" not in plain
     assert "and" not in plain
     assert "beans" not in plain
