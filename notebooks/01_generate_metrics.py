@@ -24,15 +24,15 @@ import logging
 import re
 from collections import Counter
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import nltk
 import numpy as np
 import pandas as pd
+from nltk.corpus import stopwords
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 nltk.download("stopwords", quiet=True)
-from nltk.corpus import stopwords
 
 logger = logging.getLogger(__name__)
 if not logging.getLogger().handlers:
@@ -40,6 +40,15 @@ if not logging.getLogger().handlers:
 
 SPANISH_STOPWORDS = set(stopwords.words("spanish"))
 TOKEN_RE = re.compile(r"[a-záéíóúüñ]+", re.IGNORECASE)
+SUPPORTED_SELECTION_MODES = {"full", "doc_ids", "filenames", "urls", "domain"}
+SelectionMode = Literal["full", "doc_ids", "filenames", "urls", "domain"]
+
+
+SELECTION: dict[str, Any] = {
+    "mode": "full",
+    "values": [],
+    "label": "full_corpus",
+}
 
 
 def get_project_root() -> Path:
@@ -60,11 +69,79 @@ def require_columns(frame: pd.DataFrame, required: list[str], label: str) -> Non
         raise ValueError(f"{label} is missing required columns: {missing_list}")
 
 
+def validate_selection_config(selection: dict[str, Any]) -> tuple[SelectionMode, list[str], str]:
+    """Validate and normalize notebook selection settings."""
+    mode_raw = str(selection.get("mode", "full")).strip().lower()
+    if mode_raw not in SUPPORTED_SELECTION_MODES:
+        supported = ", ".join(sorted(SUPPORTED_SELECTION_MODES))
+        raise ValueError(f"Unsupported SELECTION['mode']: {mode_raw}. Expected one of: {supported}")
+
+    values_raw = selection.get("values", [])
+    if values_raw is None:
+        values_raw = []
+    if not isinstance(values_raw, list):
+        raise ValueError("SELECTION['values'] must be a list of strings.")
+
+    values = [str(value).strip() for value in values_raw if str(value).strip()]
+    mode = cast(SelectionMode, mode_raw)
+    if mode != "full" and not values:
+        raise ValueError(f"SELECTION['values'] must contain at least one value when mode='{mode}'.")
+
+    label = str(selection.get("label", "")).strip() or "full_corpus"
+    safe_label = re.sub(r"[^a-z0-9_-]+", "_", label.lower()).strip("_")
+    if not safe_label:
+        raise ValueError("SELECTION['label'] must contain at least one alphanumeric character.")
+
+    return mode, values, safe_label
+
+
+def filter_metadata(meta: pd.DataFrame, mode: SelectionMode, values: list[str]) -> pd.DataFrame:
+    """Return the metadata slice requested by the notebook selection."""
+    if mode == "full":
+        return meta.copy()
+
+    selector_map = {
+        "doc_ids": "doc_id",
+        "filenames": "filename",
+        "urls": "url",
+        "domain": "domain",
+    }
+    column = selector_map[mode]
+    require_columns(meta, [column], "metadata_plaintext.jsonl")
+
+    selected = meta[meta[column].astype(str).isin(values)].copy()
+    if selected.empty:
+        value_preview = ", ".join(values[:5])
+        raise ValueError(f"Selection mode '{mode}' matched zero rows for values: {value_preview}")
+
+    return selected
+
+
+def build_selected_text_paths(processed_dir: Path, meta: pd.DataFrame) -> list[Path]:
+    """Resolve filtered plaintext filenames into existing text file paths."""
+    require_columns(meta, ["filename"], "filtered metadata")
+
+    txt_files = [processed_dir / filename for filename in meta["filename"].astype(str).tolist()]
+    missing = [path.name for path in txt_files if not path.exists()]
+    if missing:
+        preview = ", ".join(missing[:5])
+        raise FileNotFoundError(f"Selected plaintext files are missing from {processed_dir}: {preview}")
+
+    return txt_files
+
+
+def get_metrics_output_dir(metrics_root: Path, label: str) -> Path:
+    """Create and return the selection-specific metrics output directory."""
+    output_dir = metrics_root / label
+    output_dir.mkdir(parents=True, exist_ok=True)
+    return output_dir
+
+
 PROJECT_ROOT = get_project_root()
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 METADATA_FILE = PROCESSED_DIR / "metadata_plaintext.jsonl"
-METRICS_DIR = PROCESSED_DIR / "eda_metrics"
-METRICS_DIR.mkdir(parents=True, exist_ok=True)
+METRICS_ROOT = PROCESSED_DIR / "eda_metrics"
+METRICS_ROOT.mkdir(parents=True, exist_ok=True)
 
 if not METADATA_FILE.exists():
     raise FileNotFoundError(f"Missing metadata file: {METADATA_FILE}. Run the plaintext processing step first.")
@@ -81,11 +158,15 @@ with open(METADATA_FILE, "r", encoding="utf-8") as f:
         records.append(json.loads(line))
 
 meta = pd.DataFrame(records)
-require_columns(meta, ["filename", "url", "word_count", "char_count"], "metadata_plaintext.jsonl")
+require_columns(meta, ["doc_id", "domain", "filename", "url", "word_count", "char_count"], "metadata_plaintext.jsonl")
 
-txt_files = sorted(PROCESSED_DIR.glob("*.txt"))
+selection_mode, selection_values, selection_label = validate_selection_config(SELECTION)
+meta = filter_metadata(meta, selection_mode, selection_values)
+METRICS_DIR = get_metrics_output_dir(METRICS_ROOT, selection_label)
+
+txt_files = build_selected_text_paths(PROCESSED_DIR, meta)
 if not txt_files:
-    raise FileNotFoundError(f"No .txt files found in {PROCESSED_DIR}")
+    raise FileNotFoundError(f"No selected .txt files found in {PROCESSED_DIR}")
 
 all_texts = [p.read_text(encoding="utf-8") for p in txt_files]
 
