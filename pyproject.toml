@@ -31,6 +31,8 @@ dependencies = [
   "ipykernel>=6.31.0",
   "firecrawl-py>=4.18.0",
   "reportlab>=4.4.10",
+  "datasketch>=1.6.5",
+  "chromadb>=1.0.20",
   "pip>=26.0.1",
 ]
 

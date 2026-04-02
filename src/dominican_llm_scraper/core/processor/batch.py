@@ -2,6 +2,11 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List
 
+from dominican_llm_scraper.core.processor.deduplication import (
+    run_exact_deduplication,
+    run_near_duplicate_deduplication,
+    run_semantic_deduplication,
+)
 from dominican_llm_scraper.core.processor.pipeline import process_markdown_to_plain_text
 from dominican_llm_scraper.utils.file_utils import create_safe_filename
 
@@ -93,3 +98,13 @@ def process_all_files(
     print(f"Missing: {missing}")
     print(f"Failed: {failed}")
     print(f"Metadata: {metadata_output}")
+
+    # Comment out individual stage calls below while validating a single dedup stage in isolation.
+    exact_summary = run_exact_deduplication(output_dir)
+    print(f"Exact dedup duplicates: {exact_summary['duplicate_documents']}")
+
+    near_summary = run_near_duplicate_deduplication(output_dir)
+    print(f"Near dedup duplicates: {near_summary['duplicate_documents']}")
+
+    semantic_summary = run_semantic_deduplication(output_dir)
+    print(f"Semantic dedup duplicates: {semantic_summary['duplicate_documents']}")

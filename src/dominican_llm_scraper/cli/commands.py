@@ -200,6 +200,66 @@ def process_to_plaintext(args):
     return 0
 
 
+def dedup_exact_command(args):
+    """Run Stage 1 exact deduplication on processed plaintext output."""
+    from dominican_llm_scraper.core.processor.deduplication import run_exact_deduplication
+    from dominican_llm_scraper.core.config_loader import load_config
+
+    config = load_config()
+    input_dir = Path(args.input) if args.input else Path(config.get("plaintext_output_dir", "data/processed"))
+
+    if not input_dir.exists():
+        print(f"Error: Input directory '{input_dir}' does not exist")
+        print("Run the process command first to generate plaintext content")
+        return 1
+
+    print("Running Stage 1 exact deduplication")
+    print(f"Input: {input_dir}")
+
+    summary = run_exact_deduplication(input_dir)
+
+    print("\nStage 1 exact deduplication complete")
+    print(f"  Documents scanned: {summary['documents_scanned']}")
+    print(f"  Unique documents: {summary['unique_documents']}")
+    print(f"  Duplicate documents: {summary['duplicate_documents']}")
+    print(f"  Duplicate groups: {summary['duplicate_groups']}")
+    print(f"  Report: {input_dir / 'dedup_stage_01_exact.jsonl'}")
+    print(f"  Summary: {input_dir / 'dedup_stage_01_exact_summary.json'}")
+    return 0
+
+
+def dedup_near_command(args):
+    """Run Stage 2 near-duplicate deduplication on Stage 1 survivors."""
+    from dominican_llm_scraper.core.config_loader import load_config
+    from dominican_llm_scraper.core.processor.deduplication import run_near_duplicate_deduplication
+
+    config = load_config()
+    input_dir = Path(args.input) if args.input else Path(config.get("plaintext_output_dir", "data/processed"))
+
+    if not input_dir.exists():
+        print(f"Error: Input directory '{input_dir}' does not exist")
+        print("Run the process and dedup-exact commands first")
+        return 1
+
+    print("Running Stage 2 near-duplicate deduplication")
+    print(f"Input: {input_dir}")
+
+    summary = run_near_duplicate_deduplication(input_dir)
+
+    print("\nStage 2 near-duplicate deduplication complete")
+    print(f"  Documents scanned: {summary['documents_scanned']}")
+    print(f"  Documents skipped short: {summary['documents_skipped_short']}")
+    print(f"  Candidate pairs evaluated: {summary['candidate_pairs_evaluated']}")
+    print(f"  Duplicate documents: {summary['duplicate_documents']}")
+    print(f"  Duplicate groups: {summary['duplicate_groups']}")
+    print(f"  Shingle size: {summary['shingle_size']}")
+    print(f"  Num permutations: {summary['num_perm']}")
+    print(f"  Threshold: {summary['threshold']}")
+    print(f"  Report: {input_dir / 'dedup_stage_02_near_duplicate.jsonl'}")
+    print(f"  Summary: {input_dir / 'dedup_stage_02_near_duplicate_summary.json'}")
+    return 0
+
+
 def main():
     config = load_config()
     setup_logging(log_file=config.get("log_file"))
@@ -241,6 +301,20 @@ def main():
     process_parser.add_argument("--input", help="Input directory (default: from config)")
     process_parser.add_argument("--output", help="Output directory (default: from config)")
     process_parser.set_defaults(func=process_to_plaintext)
+
+    dedup_exact_parser = subparsers.add_parser(
+        "dedup-exact",
+        help="Run Stage 1 exact deduplication on processed plaintext",
+    )
+    dedup_exact_parser.add_argument("--input", help="Input directory (default: plaintext_output_dir from config)")
+    dedup_exact_parser.set_defaults(func=dedup_exact_command)
+
+    dedup_near_parser = subparsers.add_parser(
+        "dedup-near",
+        help="Run Stage 2 near-duplicate deduplication on Stage 1 survivors",
+    )
+    dedup_near_parser.add_argument("--input", help="Input directory (default: plaintext_output_dir from config)")
+    dedup_near_parser.set_defaults(func=dedup_near_command)
 
     args = parser.parse_args()
 

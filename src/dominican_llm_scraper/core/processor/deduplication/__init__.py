@@ -1,0 +1,5 @@
+from dominican_llm_scraper.core.processor.deduplication.stage_01_exact import run_exact_deduplication
+from dominican_llm_scraper.core.processor.deduplication.stage_02_near_duplicate import run_near_duplicate_deduplication
+from dominican_llm_scraper.core.processor.deduplication.stage_03_semantic import run_semantic_deduplication
+
+__all__ = ["run_exact_deduplication", "run_near_duplicate_deduplication", "run_semantic_deduplication"]
