@@ -1,5 +1,6 @@
 import json
 import re
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -17,7 +18,7 @@ DEFAULT_EPS_LIST = (0.90, 0.92, 0.95)
 DEFAULT_NCENTROIDS = 8
 DEFAULT_KMEANS_NITER = 30
 DEFAULT_SEED = 42
-DEFAULT_MAX_DOCS_FOR_STAGE3 = 50
+DEFAULT_MAX_DOCS_FOR_STAGE3: Optional[int] = None
 
 
 class EmbeddingProvider(Protocol):
@@ -34,6 +35,49 @@ class OllamaEmbeddingProvider:
         self.model_name = model_name
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self._preflight: Optional[Dict[str, Any]] = None
+
+    def preflight(self, failfast_ollama: bool = True, failfast_model: bool = True) -> Dict[str, Any]:
+        ts = time.time()
+        tags_url = f"{self.base_url}/api/tags"
+        request = urllib.request.Request(url=tags_url, method="GET")
+
+        try:
+            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+                payload = response.read().decode("utf-8")
+        except (urllib.error.URLError, OSError) as exc:
+            if failfast_ollama:
+                raise RuntimeError(
+                    f"Ollama endpoint unavailable at {self.base_url} (GET /api/tags failed): {exc}"
+                ) from exc
+            self._preflight = {
+                "ollama_ok": False,
+                "model_found": False,
+                "preflight_ts": ts,
+                "base_url": self.base_url,
+                "model_name": self.model_name,
+                "error": str(exc),
+            }
+            return self._preflight
+
+        parsed = json.loads(payload)
+        models = parsed.get("models", []) or []
+        available_model_names = [str(model.get("name", "")) for model in models]
+        model_found = self.model_name in available_model_names
+
+        if failfast_model and not model_found:
+            raise RuntimeError(
+                f"Ollama model '{self.model_name}' not available. Pull it first (ollama pull {self.model_name})."
+            )
+
+        self._preflight = {
+            "ollama_ok": True,
+            "model_found": model_found,
+            "preflight_ts": ts,
+            "base_url": self.base_url,
+            "model_name": self.model_name,
+        }
+        return self._preflight
 
     def embed_texts(self, texts: Sequence[str]) -> List[List[float]]:
         payload = json.dumps({"model": self.model_name, "input": list(texts)}).encode("utf-8")
@@ -46,7 +90,7 @@ class OllamaEmbeddingProvider:
         try:
             with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
                 body = response.read().decode("utf-8")
-        except urllib.error.URLError as exc:
+        except (urllib.error.URLError, OSError) as exc:
             raise RuntimeError(f"Failed to fetch embeddings from Ollama: {exc}") from exc
 
         parsed = json.loads(body)
@@ -115,7 +159,37 @@ def _connected_components(nodes: Sequence[str], edges: Dict[str, set[str]]) -> L
     return components
 
 
-def _kmeans_cluster(vectors: np.ndarray, ncentroids: int, kmeans_niter: int, seed: int) -> np.ndarray:
+def _resolve_faiss_gpu_mode(use_gpu: Optional[bool]) -> Dict[str, Any]:
+    has_gpu_attr = hasattr(faiss, "get_num_gpus")
+    gpu_count = int(faiss.get_num_gpus()) if has_gpu_attr else 0
+    gpu_available = gpu_count > 0
+
+    if use_gpu is True and not gpu_available:
+        raise RuntimeError("GPU requested for FAISS k-means, but no FAISS GPU device is available.")
+
+    if use_gpu is True:
+        gpu_effective = True
+    elif use_gpu is False:
+        gpu_effective = False
+    else:
+        gpu_effective = gpu_available
+
+    return {
+        "gpu_requested": use_gpu,
+        "gpu_effective": gpu_effective,
+        "faiss_mode": "gpu" if gpu_effective else "cpu",
+        "faiss_gpu_available": gpu_available,
+        "faiss_gpu_count": gpu_count,
+    }
+
+
+def _kmeans_cluster(
+    vectors: np.ndarray,
+    ncentroids: int,
+    kmeans_niter: int,
+    seed: int,
+    use_gpu: bool,
+) -> np.ndarray:
     if vectors.ndim != 2:
         raise ValueError("vectors must be a 2D matrix")
     n_docs, emb_dim = vectors.shape
@@ -133,7 +207,7 @@ def _kmeans_cluster(vectors: np.ndarray, ncentroids: int, kmeans_niter: int, see
         verbose=False,
         seed=seed,
         spherical=True,
-        gpu=False,
+        gpu=use_gpu,
     )
     kmeans.train(faiss_vectors)
     _, nearest = kmeans.index.search(faiss_vectors, 1)
@@ -181,7 +255,12 @@ def run_semantic_deduplication(
     ncentroids: int = DEFAULT_NCENTROIDS,
     kmeans_niter: int = DEFAULT_KMEANS_NITER,
     seed: int = DEFAULT_SEED,
-    max_docs_for_stage3: int = DEFAULT_MAX_DOCS_FOR_STAGE3,
+    max_docs_for_stage3: Optional[int] = DEFAULT_MAX_DOCS_FOR_STAGE3,
+    use_gpu: Optional[bool] = None,
+    failfast_ollama: bool = True,
+    failfast_model: bool = True,
+    ollama_base_url: str = "http://127.0.0.1:11434",
+    ollama_timeout_seconds: int = 120,
 ) -> Dict[str, Any]:
     metadata_path = input_dir / "metadata_plaintext.jsonl"
     stage_01_report_path = input_dir / "dedup_stage_01_exact.jsonl"
@@ -210,11 +289,33 @@ def run_semantic_deduplication(
         if not row.get("is_duplicate", False) and row["doc_id"] not in stage_01_duplicates
     ]
 
-    selected_doc_ids = sorted(stage_02_survivors)[:max_docs_for_stage3]
+    sorted_survivors = sorted(stage_02_survivors)
+    if max_docs_for_stage3 is None:
+        selected_doc_ids = sorted_survivors
+    else:
+        selected_doc_ids = sorted_survivors[:max_docs_for_stage3]
     doc_order = {doc_id: index for index, doc_id in enumerate(selected_doc_ids)}
 
+    preflight_info: Dict[str, Any] = {
+        "ollama_ok": None,
+        "model_found": None,
+        "preflight_ts": None,
+        "base_url": None,
+        "model_name": model_name,
+    }
     if embedding_provider is None:
-        embedding_provider = OllamaEmbeddingProvider(model_name=model_name)
+        embedding_provider = OllamaEmbeddingProvider(
+            model_name=model_name,
+            base_url=ollama_base_url,
+            timeout_seconds=ollama_timeout_seconds,
+        )
+    if isinstance(embedding_provider, OllamaEmbeddingProvider):
+        preflight_info = embedding_provider.preflight(
+            failfast_ollama=failfast_ollama,
+            failfast_model=failfast_model,
+        )
+
+    faiss_mode_info = _resolve_faiss_gpu_mode(use_gpu=use_gpu)
 
     token_counts: Dict[str, int] = {}
     vectors_by_doc_id: Dict[str, np.ndarray] = {}
@@ -243,7 +344,13 @@ def run_semantic_deduplication(
 
     if vector_doc_ids:
         vector_matrix = np.vstack([vectors_by_doc_id[doc_id] for doc_id in vector_doc_ids]).astype(np.float32)
-        cluster_labels = _kmeans_cluster(vector_matrix, ncentroids=ncentroids, kmeans_niter=kmeans_niter, seed=seed)
+        cluster_labels = _kmeans_cluster(
+            vector_matrix,
+            ncentroids=ncentroids,
+            kmeans_niter=kmeans_niter,
+            seed=seed,
+            use_gpu=bool(faiss_mode_info["gpu_effective"]),
+        )
     else:
         vector_matrix = np.empty((0, 0), dtype=np.float32)
         cluster_labels = np.empty((0,), dtype=np.int64)
@@ -436,9 +543,15 @@ def run_semantic_deduplication(
         "kmeans_niter": kmeans_niter,
         "seed": seed,
         "max_docs_for_stage3": max_docs_for_stage3,
+        "gpu_requested": faiss_mode_info["gpu_requested"],
+        "gpu_effective": faiss_mode_info["gpu_effective"],
+        "faiss_mode": faiss_mode_info["faiss_mode"],
+        "faiss_gpu_available": faiss_mode_info["faiss_gpu_available"],
+        "faiss_gpu_count": faiss_mode_info["faiss_gpu_count"],
+        "preflight": preflight_info,
         "selected_documents_count": len(selected_doc_ids),
         "total_stage_2_survivors": len(stage_02_survivors),
-        "selection_strategy": "sorted_doc_id_first_n",
+        "selection_strategy": "sorted_doc_id_full_or_first_n",
         "selected_doc_ids": selected_doc_ids,
         "artifacts": {
             "doc_metrics": str(doc_metrics_path),
@@ -462,13 +575,23 @@ def run_semantic_deduplication(
             "kmeans_niter": kmeans_niter,
             "seed": seed,
             "max_docs_for_stage3": max_docs_for_stage3,
+            "gpu_requested": faiss_mode_info["gpu_requested"],
+            "gpu_effective": faiss_mode_info["gpu_effective"],
+            "faiss_mode": faiss_mode_info["faiss_mode"],
+            "faiss_gpu_available": faiss_mode_info["faiss_gpu_available"],
+            "faiss_gpu_count": faiss_mode_info["faiss_gpu_count"],
+            "failfast_ollama": failfast_ollama,
+            "failfast_model": failfast_model,
+            "ollama_base_url": ollama_base_url,
+            "ollama_timeout_seconds": ollama_timeout_seconds,
         },
         "selection": {
-            "strategy": "sorted_doc_id_first_n",
+            "strategy": "sorted_doc_id_full_or_first_n",
             "selected_count": len(selected_doc_ids),
             "total_stage_2_survivors": len(stage_02_survivors),
             "selected_doc_ids": selected_doc_ids,
         },
+        "preflight": preflight_info,
         "metrics": per_epsilon_summary,
     }
     run_summary_path.write_text(json.dumps(run_summary, indent=2, ensure_ascii=False), encoding="utf-8")
