@@ -8,7 +8,6 @@ from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
 import faiss
 import numpy as np
-import pandas as pd
 
 
 DEFAULT_MODEL_NAME = "qwen3-embedding:0.6b"
@@ -245,8 +244,8 @@ def _build_cluster_graph(
 
 def run_semantic_deduplication(
     input_dir: Path,
-    output_jsonl: Optional[Path] = None,
-    output_summary: Optional[Path] = None,
+    stage_01_rows: List[Dict[str, Any]],
+    stage_02_rows: List[Dict[str, Any]],
     embedding_provider: Optional[EmbeddingProvider] = None,
     model_name: str = DEFAULT_MODEL_NAME,
     min_token_count: int = DEFAULT_MIN_TOKEN_COUNT,
@@ -263,17 +262,8 @@ def run_semantic_deduplication(
     ollama_timeout_seconds: int = 120,
 ) -> Dict[str, Any]:
     metadata_path = input_dir / "metadata_plaintext.jsonl"
-    stage_01_report_path = input_dir / "dedup_stage_01_exact.jsonl"
-    stage_02_report_path = input_dir / "dedup_stage_02_near_duplicate.jsonl"
-
-    for path in (metadata_path, stage_01_report_path, stage_02_report_path):
-        if not path.exists():
-            raise FileNotFoundError(f"Required Stage 3 input file not found: {path}")
-
-    if output_jsonl is None:
-        output_jsonl = input_dir / "dedup_stage_03_semantic.jsonl"
-    if output_summary is None:
-        output_summary = input_dir / "dedup_stage_03_semantic_summary.json"
+    if not metadata_path.exists():
+        raise FileNotFoundError(f"Processed metadata file not found: {metadata_path}")
 
     sorted_eps = sorted({float(eps) for eps in eps_list})
     if not sorted_eps:
@@ -282,10 +272,10 @@ def run_semantic_deduplication(
     metadata_rows = _load_jsonl(metadata_path)
     metadata_by_doc_id = {row["doc_id"]: row for row in metadata_rows}
 
-    stage_01_duplicates = {row["doc_id"] for row in _load_jsonl(stage_01_report_path) if row.get("is_duplicate", False)}
+    stage_01_duplicates = {row["doc_id"] for row in stage_01_rows if row.get("is_duplicate", False)}
     stage_02_survivors = [
         row["doc_id"]
-        for row in _load_jsonl(stage_02_report_path)
+        for row in stage_02_rows
         if not row.get("is_duplicate", False) and row["doc_id"] not in stage_01_duplicates
     ]
 
@@ -490,29 +480,10 @@ def run_semantic_deduplication(
             doc_metric_row[key] = doc_id not in duplicate_doc_ids_for_eps[eps]
         doc_metrics.append(doc_metric_row)
 
-    with open(output_jsonl, "w", encoding="utf-8") as handle:
-        for row in report_rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-
-    doc_metrics_df = pd.DataFrame(doc_metrics).sort_values("doc_id") if doc_metrics else pd.DataFrame()
-    cluster_metrics_df = pd.DataFrame(cluster_metrics).sort_values("cluster_id") if cluster_metrics else pd.DataFrame()
-    pair_edges_df = pd.DataFrame(pair_edges)
-
-    doc_metrics_path = input_dir / "dedup_stage_03_doc_metrics.parquet"
-    cluster_metrics_path = input_dir / "dedup_stage_03_cluster_metrics.parquet"
-    pair_edges_path = input_dir / "dedup_stage_03_pair_edges.parquet"
-    run_summary_path = input_dir / "dedup_stage_03_run_summary.json"
-
-    doc_metrics_df.to_parquet(doc_metrics_path, index=False)
-    cluster_metrics_df.to_parquet(cluster_metrics_path, index=False)
-    pair_edges_df.to_parquet(pair_edges_path, index=False)
-
     per_epsilon_summary: Dict[str, Dict[str, Any]] = {}
     for eps in sorted_eps:
         eps_key = str(eps)
         kept_doc_ids = [doc_id for doc_id in selected_doc_ids if doc_id not in duplicate_doc_ids_for_eps[eps]]
-        manifest_path = input_dir / f"dedup_stage_03_keep_manifest_eps_{_sanitize_eps_value(eps)}.txt"
-        manifest_path.write_text("\n".join(kept_doc_ids) + ("\n" if kept_doc_ids else ""), encoding="utf-8")
 
         per_epsilon_summary[eps_key] = {
             "documents_scanned": len(selected_doc_ids),
@@ -521,7 +492,7 @@ def run_semantic_deduplication(
             "duplicate_documents": len(duplicate_doc_ids_for_eps[eps]),
             "kept_documents": len(kept_doc_ids),
             "prune_rate": (float(len(duplicate_doc_ids_for_eps[eps])) / len(selected_doc_ids)) if selected_doc_ids else 0.0,
-            "manifest_path": str(manifest_path),
+            "kept_doc_ids": kept_doc_ids,
         }
 
     summary = {
@@ -553,17 +524,8 @@ def run_semantic_deduplication(
         "total_stage_2_survivors": len(stage_02_survivors),
         "selection_strategy": "sorted_doc_id_full_or_first_n",
         "selected_doc_ids": selected_doc_ids,
-        "artifacts": {
-            "doc_metrics": str(doc_metrics_path),
-            "cluster_metrics": str(cluster_metrics_path),
-            "pair_edges": str(pair_edges_path),
-            "run_summary": str(run_summary_path),
-        },
         "per_epsilon": per_epsilon_summary,
     }
-
-    with open(output_summary, "w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2, ensure_ascii=False)
 
     run_summary = {
         "config": {
@@ -594,6 +556,14 @@ def run_semantic_deduplication(
         "preflight": preflight_info,
         "metrics": per_epsilon_summary,
     }
-    run_summary_path.write_text(json.dumps(run_summary, indent=2, ensure_ascii=False), encoding="utf-8")
 
-    return summary
+    return {
+        "summary": summary,
+        "rows": report_rows,
+        "pair_edges": pair_edges,
+        "diagnostics": {
+            "doc_metrics": sorted(doc_metrics, key=lambda row: row["doc_id"]),
+            "cluster_metrics": sorted(cluster_metrics, key=lambda row: row["cluster_id"]),
+            "run_summary": run_summary,
+        },
+    }

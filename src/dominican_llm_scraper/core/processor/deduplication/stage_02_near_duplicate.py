@@ -2,7 +2,7 @@ import json
 import re
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Set, Tuple
 
 from datasketch import MinHash, MinHashLSH
 
@@ -79,28 +79,18 @@ def _connected_components(doc_ids: List[str], edges: Dict[str, Set[str]]) -> Lis
 
 def run_near_duplicate_deduplication(
     input_dir: Path,
-    output_jsonl: Optional[Path] = None,
-    output_summary: Optional[Path] = None,
+    stage_01_rows: List[Dict[str, Any]],
     shingle_size: int = DEFAULT_SHINGLE_SIZE,
     num_perm: int = DEFAULT_NUM_PERM,
     threshold: float = DEFAULT_THRESHOLD,
     min_token_count: int = DEFAULT_MIN_TOKEN_COUNT,
 ) -> Dict[str, Any]:
     metadata_path = input_dir / "metadata_plaintext.jsonl"
-    stage_01_report_path = input_dir / "dedup_stage_01_exact.jsonl"
     if not metadata_path.exists():
         raise FileNotFoundError(f"Processed metadata file not found: {metadata_path}")
-    if not stage_01_report_path.exists():
-        raise FileNotFoundError(f"Stage 1 report file not found: {stage_01_report_path}")
-
-    if output_jsonl is None:
-        output_jsonl = input_dir / "dedup_stage_02_near_duplicate.jsonl"
-    if output_summary is None:
-        output_summary = input_dir / "dedup_stage_02_near_duplicate_summary.json"
 
     metadata_rows = _load_jsonl(metadata_path)
     metadata_by_doc_id = {row["doc_id"]: row for row in metadata_rows}
-    stage_01_rows = _load_jsonl(stage_01_report_path)
 
     survivor_doc_ids = [row["doc_id"] for row in stage_01_rows if not row.get("is_duplicate", False)]
     survivor_rows = [metadata_by_doc_id[doc_id] for doc_id in survivor_doc_ids if doc_id in metadata_by_doc_id]
@@ -211,10 +201,6 @@ def run_near_duplicate_deduplication(
             }
         )
 
-    with open(output_jsonl, "w", encoding="utf-8") as handle:
-        for row in report_rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-
     summary = {
         "documents_scanned": len(survivor_doc_ids),
         "documents_skipped_short": len(skipped_short_doc_ids),
@@ -226,7 +212,4 @@ def run_near_duplicate_deduplication(
         "threshold": threshold,
     }
 
-    with open(output_summary, "w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2, ensure_ascii=False)
-
-    return summary
+    return {"summary": summary, "rows": report_rows}

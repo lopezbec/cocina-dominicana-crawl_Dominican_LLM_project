@@ -20,8 +20,8 @@ def _write_processed_corpus(base_dir: Path, documents: list[dict]) -> None:
             metadata_handle.write(json.dumps(metadata_row, ensure_ascii=False) + "\n")
 
 
-def _run_stage_01(base_dir: Path) -> None:
-    run_exact_deduplication(base_dir)
+def _run_stage_01(base_dir: Path) -> list[dict]:
+    return run_exact_deduplication(base_dir)["rows"]
 
 
 def test_stage_02_detects_near_duplicates(tmp_path: Path) -> None:
@@ -44,15 +44,13 @@ def test_stage_02_detects_near_duplicates(tmp_path: Path) -> None:
             },
         ],
     )
-    _run_stage_01(tmp_path)
+    stage_01_rows = _run_stage_01(tmp_path)
 
-    summary = run_near_duplicate_deduplication(tmp_path, threshold=0.8)
+    result = run_near_duplicate_deduplication(tmp_path, stage_01_rows, threshold=0.8)
+    summary = result["summary"]
 
     assert summary["duplicate_documents"] == 1
-    report_rows = [
-        json.loads(line)
-        for line in (tmp_path / "dedup_stage_02_near_duplicate.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    report_rows = result["rows"]
     assert report_rows[1]["canonical_doc_id"] == "0001"
     assert report_rows[1]["is_duplicate"] is True
     assert report_rows[1]["jaccard_similarity"] >= 0.8
@@ -67,15 +65,13 @@ def test_stage_02_ignores_stage_01_duplicates(tmp_path: Path) -> None:
             {"doc_id": "0003", "filename": "0003.txt", "text": "otro documento diferente " * 40},
         ],
     )
-    _run_stage_01(tmp_path)
+    stage_01_rows = _run_stage_01(tmp_path)
 
-    summary = run_near_duplicate_deduplication(tmp_path)
+    result = run_near_duplicate_deduplication(tmp_path, stage_01_rows)
+    summary = result["summary"]
 
     assert summary["documents_scanned"] == 2
-    report_rows = [
-        json.loads(line)
-        for line in (tmp_path / "dedup_stage_02_near_duplicate.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    report_rows = result["rows"]
     assert {row["doc_id"] for row in report_rows} == {"0001", "0003"}
 
 
@@ -97,9 +93,9 @@ def test_stage_02_preserves_distinct_documents(tmp_path: Path) -> None:
             },
         ],
     )
-    _run_stage_01(tmp_path)
+    stage_01_rows = _run_stage_01(tmp_path)
 
-    summary = run_near_duplicate_deduplication(tmp_path)
+    summary = run_near_duplicate_deduplication(tmp_path, stage_01_rows)["summary"]
 
     assert summary["duplicate_documents"] == 0
 
@@ -125,18 +121,13 @@ def test_stage_02_builds_connected_components(tmp_path: Path) -> None:
             },
         ],
     )
-    _run_stage_01(tmp_path)
+    stage_01_rows = _run_stage_01(tmp_path)
 
-    summary = run_near_duplicate_deduplication(tmp_path, threshold=0.5)
+    result = run_near_duplicate_deduplication(tmp_path, stage_01_rows, threshold=0.5)
+    summary = result["summary"]
 
     assert summary["duplicate_groups"] == 1
-    report_rows = {
-        row["doc_id"]: row
-        for row in [
-            json.loads(line)
-            for line in (tmp_path / "dedup_stage_02_near_duplicate.jsonl").read_text(encoding="utf-8").splitlines()
-        ]
-    }
+    report_rows = {row["doc_id"]: row for row in result["rows"]}
     assert report_rows["0002"]["canonical_doc_id"] == "0001"
     assert report_rows["0003"]["canonical_doc_id"] == "0001"
 
@@ -149,19 +140,17 @@ def test_stage_02_skips_short_documents(tmp_path: Path) -> None:
             {"doc_id": "0002", "filename": "0002.txt", "text": "texto corto uno dos tres cuatro"},
         ],
     )
-    _run_stage_01(tmp_path)
+    stage_01_rows = _run_stage_01(tmp_path)
 
-    summary = run_near_duplicate_deduplication(tmp_path, min_token_count=30)
+    result = run_near_duplicate_deduplication(tmp_path, stage_01_rows, min_token_count=30)
+    summary = result["summary"]
 
     assert summary["documents_skipped_short"] == 2
-    report_rows = [
-        json.loads(line)
-        for line in (tmp_path / "dedup_stage_02_near_duplicate.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    report_rows = result["rows"]
     assert all(row["match_type"] == "skipped_short_document" for row in report_rows)
 
 
-def test_stage_02_writes_expected_report_files(tmp_path: Path) -> None:
+def test_stage_02_returns_expected_report_structure(tmp_path: Path) -> None:
     _write_processed_corpus(
         tmp_path,
         [
@@ -169,16 +158,14 @@ def test_stage_02_writes_expected_report_files(tmp_path: Path) -> None:
             {"doc_id": "0002", "filename": "0002.txt", "text": "texto dos " * 40},
         ],
     )
-    _run_stage_01(tmp_path)
+    stage_01_rows = _run_stage_01(tmp_path)
 
-    run_near_duplicate_deduplication(tmp_path)
+    result = run_near_duplicate_deduplication(tmp_path, stage_01_rows)
 
-    summary_path = tmp_path / "dedup_stage_02_near_duplicate_summary.json"
-    report_path = tmp_path / "dedup_stage_02_near_duplicate.jsonl"
-    assert report_path.exists()
-    assert summary_path.exists()
+    assert not (tmp_path / "dedup_stage_02_near_duplicate.jsonl").exists()
+    assert not (tmp_path / "dedup_stage_02_near_duplicate_summary.json").exists()
 
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary = result["summary"]
     assert set(summary) == {
         "documents_scanned",
         "documents_skipped_short",

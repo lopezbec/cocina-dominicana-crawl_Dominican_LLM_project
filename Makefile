@@ -1,6 +1,6 @@
 .PHONY: help setup install firecrawl-start firecrawl-stop firecrawl-restart \
         firecrawl-status firecrawl-logs firecrawl-test scrape scrape-url \
-        scrape-force process compare-pdf clean tidy
+        scrape-force process compare-pdf sync clean tidy
 
 .DEFAULT_GOAL := help
 
@@ -9,6 +9,7 @@ PYTHON := uv run python
 UV := uv
 FIRECRAWL_DIR := firecrawl
 DOCKER_COMPOSE := docker compose
+UNISON := unison
 
 help:
 	@echo ""
@@ -46,6 +47,9 @@ help:
 	@echo "  PROCESSING"
 	@echo "    make process                  Convert markdown to plaintext"
 	@echo "    make compare-pdf IDS=<ids>    Create raw vs processed PDF report"
+	@echo ""
+	@echo "  SYNC"
+	@echo "    make sync                     Bidirectional sync with remote server"
 	@echo ""
 	@echo "  CLEANUP"
 	@echo "    make clean                    Remove Firecrawl containers and volumes"
@@ -176,6 +180,60 @@ compare-pdf:
 	@$(UV) sync
 	@$(PYTHON) -m playwright install chromium
 	@$(PYTHON) scripts/generate_comparison_pdf.py --ids "$(IDS)" $(if $(OUTPUT),--output "$(OUTPUT)")
+
+# Synchronization
+sync:
+	@if [ ! -f .env ]; then \
+		echo "Error: .env not found"; \
+		echo "Required variables: SYNC_REMOTE_USER, SYNC_REMOTE_HOST, SYNC_REMOTE_DIR, SYNC_REMOTE_PASSWORD"; \
+		exit 1; \
+	fi
+	@set -a; . ./.env; set +a; \
+	for var in SYNC_REMOTE_USER SYNC_REMOTE_HOST SYNC_REMOTE_DIR SYNC_REMOTE_PASSWORD; do \
+		eval "value=\$$$$var"; \
+		if [ -z "$$value" ]; then \
+			echo "Error: $$var is required in .env"; \
+			exit 1; \
+		fi; \
+	done; \
+	if ! command -v sshpass > /dev/null 2>&1; then \
+		echo "Error: sshpass not found"; \
+		echo "Install it locally before running make sync"; \
+		exit 1; \
+	fi; \
+	if ! command -v $(UNISON) > /dev/null 2>&1; then \
+		echo "Error: $(UNISON) not found"; \
+		echo "Install unison locally before running make sync"; \
+		exit 1; \
+	fi; \
+	echo "Creating remote directory $$SYNC_REMOTE_USER@$$SYNC_REMOTE_HOST:$$SYNC_REMOTE_DIR"; \
+	SSHPASS="$$SYNC_REMOTE_PASSWORD" sshpass -e ssh \
+		-o StrictHostKeyChecking=accept-new \
+		-o PreferredAuthentications=password \
+		-o PubkeyAuthentication=no \
+		"$$SYNC_REMOTE_USER@$$SYNC_REMOTE_HOST" \
+		"mkdir -p \"$$SYNC_REMOTE_DIR\" && command -v unison > /dev/null 2>&1 || { echo 'Error: unison not found on remote server'; exit 127; }"; \
+	echo "Synchronizing selected project paths"; \
+	SYNC_SSH_WRAPPER="$$(mktemp /tmp/fondocyt-sync-ssh.XXXXXX)"; \
+	printf '%s\n' '#!/bin/sh' 'exec sshpass -e ssh "$$@"' > "$$SYNC_SSH_WRAPPER"; \
+	chmod 700 "$$SYNC_SSH_WRAPPER"; \
+	SSHPASS="$$SYNC_REMOTE_PASSWORD" $(UNISON) "$(CURDIR)" "ssh://$$SYNC_REMOTE_USER@$$SYNC_REMOTE_HOST/$$SYNC_REMOTE_DIR" \
+		-auto \
+		-batch \
+		-times \
+		-perms 0 \
+		-sshcmd "$$SYNC_SSH_WRAPPER" \
+		-sshargs "-o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password -o PubkeyAuthentication=no -o ServerAliveInterval=30" \
+		-path config \
+		-path data \
+		-path firecrawl \
+		-path Makefile \
+		-path pyproject.toml \
+		-path src \
+		-path uv.lock \
+		-path .env.example \
+		-path .python-version; \
+	rm -f "$$SYNC_SSH_WRAPPER"
 
 # Cleanup
 clean:

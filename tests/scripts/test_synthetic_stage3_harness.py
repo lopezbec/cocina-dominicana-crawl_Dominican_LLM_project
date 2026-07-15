@@ -74,11 +74,13 @@ def test_pair_a_collapses_pair_b_remains_distinct(tmp_path: Path) -> None:
         (PROCESSED / "metadata_plaintext.jsonl").read_text(encoding="utf-8"), encoding="utf-8"
     )
 
-    run_exact_deduplication(tmp_path)
-    run_near_duplicate_deduplication(tmp_path, threshold=0.95)
+    stage_01_rows = run_exact_deduplication(tmp_path)["rows"]
+    stage_02_rows = run_near_duplicate_deduplication(tmp_path, stage_01_rows, threshold=0.95)["rows"]
 
-    run_semantic_deduplication(
+    result = run_semantic_deduplication(
         tmp_path,
+        stage_01_rows,
+        stage_02_rows,
         eps_list=[0.9],
         ncentroids=1,
         kmeans_niter=20,
@@ -88,7 +90,7 @@ def test_pair_a_collapses_pair_b_remains_distinct(tmp_path: Path) -> None:
         max_docs_for_stage3=50,
     )
 
-    rows = [json.loads(line) for line in (tmp_path / "dedup_stage_03_semantic.jsonl").read_text(encoding="utf-8").splitlines()]
+    rows = result["rows"]
     by_id = {row["doc_id"]: row for row in rows}
 
     a1 = by_id["9001"]

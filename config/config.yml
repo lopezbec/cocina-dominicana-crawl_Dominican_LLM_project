@@ -23,4 +23,4 @@ filters:
     - twitter\.com
     - "#"
 processing:
-  min_content_length: 100
+  min_content_length: 50

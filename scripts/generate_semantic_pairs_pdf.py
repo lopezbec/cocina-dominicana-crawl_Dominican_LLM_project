@@ -99,24 +99,23 @@ def build_pair_results(args: argparse.Namespace) -> tuple[list[PairResult], bool
     manifest = _load_manifest(args.expected_manifest)
     expected = _expected_map(manifest)
 
-    rows = _load_jsonl(args.input_dir / "dedup_stage_03_semantic.jsonl")
+    report_path = args.input_dir / "dedup_report.json"
+    if not report_path.exists():
+        raise ValueError(f"Missing dedup report: {report_path}")
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    rows = report.get("duplicates", [])
     rows_by_id = {str(row["doc_id"]): row for row in rows}
+    semantic_summary = report.get("by_stage", {}).get("semantic", {})
 
-    if not rows:
-        raise ValueError("dedup_stage_03_semantic.jsonl is empty")
-
-    default_eps = float(rows[0].get("threshold", manifest.get("default_epsilon", 0.9)))
+    default_eps = float(semantic_summary.get("threshold", manifest.get("default_epsilon", 0.9)))
     epsilon = float(args.epsilon) if args.epsilon is not None else default_eps
 
     results: list[PairResult] = []
     all_pass = True
 
     for left_id, right_id in pairs:
-        if left_id not in rows_by_id or right_id not in rows_by_id:
-            raise ValueError(f"Pair contains unknown id(s): {left_id}:{right_id}")
-
-        left_row = rows_by_id[left_id]
-        right_row = rows_by_id[right_id]
+        left_row = rows_by_id.get(left_id, {"doc_id": left_id, "canonical_doc_id": left_id, "is_duplicate": False})
+        right_row = rows_by_id.get(right_id, {"doc_id": right_id, "canonical_doc_id": right_id, "is_duplicate": False})
 
         left_dup = bool(left_row.get("is_duplicate", False))
         right_dup = bool(right_row.get("is_duplicate", False))
@@ -138,8 +137,8 @@ def build_pair_results(args: argparse.Namespace) -> tuple[list[PairResult], bool
             all_pass = False
 
         similarity_candidates = [
-            left_row.get("semantic_similarity"),
-            right_row.get("semantic_similarity"),
+            left_row.get("score"),
+            right_row.get("score"),
         ]
         semantic_similarity = next((float(x) for x in similarity_candidates if x is not None), None)
 

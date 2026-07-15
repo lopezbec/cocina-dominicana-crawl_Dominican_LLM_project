@@ -59,10 +59,14 @@ def main() -> int:
     print(f"[synthetic] output={args.output_dir}")
     print(f"[synthetic] epsilon={epsilon}")
 
-    stage1_summary = run_exact_deduplication(args.output_dir)
-    stage2_summary = run_near_duplicate_deduplication(args.output_dir, threshold=args.near_threshold)
-    stage3_summary = run_semantic_deduplication(
+    stage1_result = run_exact_deduplication(args.output_dir)
+    stage2_result = run_near_duplicate_deduplication(
+        args.output_dir, stage1_result["rows"], threshold=args.near_threshold
+    )
+    stage3_result = run_semantic_deduplication(
         args.output_dir,
+        stage1_result["rows"],
+        stage2_result["rows"],
         eps_list=[epsilon],
         ncentroids=args.ncentroids,
         kmeans_niter=args.kmeans_niter,
@@ -73,9 +77,9 @@ def main() -> int:
     )
 
     run_meta = {
-        "stage1": stage1_summary,
-        "stage2": stage2_summary,
-        "stage3": stage3_summary,
+        "stage1": stage1_result["summary"],
+        "stage2": stage2_result["summary"],
+        "stage3": stage3_result["summary"],
         "epsilon": epsilon,
         "manifest": str(args.manifest),
     }
@@ -83,10 +87,9 @@ def main() -> int:
         json.dumps(run_meta, indent=2, ensure_ascii=False), encoding="utf-8"
     )
 
-    print("[synthetic] stage1 duplicates:", stage1_summary.get("duplicate_documents"))
-    print("[synthetic] stage2 duplicates:", stage2_summary.get("duplicate_documents"))
-    print("[synthetic] stage3 duplicates:", stage3_summary.get("duplicate_documents"))
-    print("[synthetic] semantic jsonl:", args.output_dir / "dedup_stage_03_semantic.jsonl")
+    print("[synthetic] stage1 duplicates:", stage1_result["summary"].get("duplicate_documents"))
+    print("[synthetic] stage2 duplicates:", stage2_result["summary"].get("duplicate_documents"))
+    print("[synthetic] stage3 duplicates:", stage3_result["summary"].get("duplicate_documents"))
     return 0
 
 

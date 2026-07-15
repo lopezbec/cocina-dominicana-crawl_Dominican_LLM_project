@@ -1,7 +1,7 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 def normalize_exact_text(text: str) -> str:
@@ -24,17 +24,10 @@ def _compute_content_hash(text: str) -> str:
 
 def run_exact_deduplication(
     input_dir: Path,
-    output_jsonl: Optional[Path] = None,
-    output_summary: Optional[Path] = None,
-) -> Dict[str, int]:
+) -> Dict[str, Any]:
     metadata_path = input_dir / "metadata_plaintext.jsonl"
     if not metadata_path.exists():
         raise FileNotFoundError(f"Processed metadata file not found: {metadata_path}")
-
-    if output_jsonl is None:
-        output_jsonl = input_dir / "dedup_stage_01_exact.jsonl"
-    if output_summary is None:
-        output_summary = input_dir / "dedup_stage_01_exact_summary.json"
 
     entries = _load_processed_metadata(metadata_path)
     hash_to_canonical: Dict[str, str] = {}
@@ -73,10 +66,6 @@ def run_exact_deduplication(
             }
         )
 
-    with open(output_jsonl, "w", encoding="utf-8") as handle:
-        for row in report_rows:
-            handle.write(json.dumps(row, ensure_ascii=False) + "\n")
-
     summary = {
         "documents_scanned": len(entries),
         "unique_documents": len(entries) - duplicate_documents,
@@ -84,7 +73,4 @@ def run_exact_deduplication(
         "duplicate_groups": len(duplicate_groups),
     }
 
-    with open(output_summary, "w", encoding="utf-8") as handle:
-        json.dump(summary, handle, indent=2, ensure_ascii=False)
-
-    return summary
+    return {"summary": summary, "rows": report_rows}

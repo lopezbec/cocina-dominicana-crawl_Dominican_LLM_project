@@ -426,7 +426,7 @@ filters:
 
 processing:
   filter_english: true      # Filter out English words from content
-  min_content_length: 100   # Minimum content length in characters
+  min_content_length: 50    # Remove documents with 50 or fewer characters
 ```
 
 ### Run Artifacts and Cleanup

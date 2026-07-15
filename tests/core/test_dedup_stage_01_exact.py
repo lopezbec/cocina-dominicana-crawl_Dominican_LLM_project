@@ -30,7 +30,8 @@ def test_stage_01_exact_detects_duplicate_texts(tmp_path: Path) -> None:
         ],
     )
 
-    summary = run_exact_deduplication(tmp_path)
+    result = run_exact_deduplication(tmp_path)
+    summary = result["summary"]
 
     assert summary == {
         "documents_scanned": 3,
@@ -39,9 +40,7 @@ def test_stage_01_exact_detects_duplicate_texts(tmp_path: Path) -> None:
         "duplicate_groups": 1,
     }
 
-    report_rows = [
-        json.loads(line) for line in (tmp_path / "dedup_stage_01_exact.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    report_rows = result["rows"]
     assert report_rows[0]["canonical_doc_id"] == "0001"
     assert report_rows[0]["is_duplicate"] is False
     assert report_rows[1]["canonical_doc_id"] == "0001"
@@ -59,7 +58,7 @@ def test_stage_01_exact_preserves_unique_documents(tmp_path: Path) -> None:
         ],
     )
 
-    summary = run_exact_deduplication(tmp_path)
+    summary = run_exact_deduplication(tmp_path)["summary"]
 
     assert summary["duplicate_documents"] == 0
     assert summary["duplicate_groups"] == 0
@@ -81,12 +80,11 @@ def test_stage_01_exact_uses_processed_pipeline_output(tmp_path: Path) -> None:
         ],
     )
 
-    summary = run_exact_deduplication(tmp_path)
+    result = run_exact_deduplication(tmp_path)
+    summary = result["summary"]
 
     assert summary["duplicate_documents"] == 1
-    report_rows = [
-        json.loads(line) for line in (tmp_path / "dedup_stage_01_exact.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    report_rows = result["rows"]
     assert report_rows[1]["canonical_doc_id"] == "0001"
     assert report_rows[1]["is_duplicate"] is True
 
@@ -100,12 +98,12 @@ def test_stage_01_exact_does_not_use_title_only(tmp_path: Path) -> None:
         ],
     )
 
-    summary = run_exact_deduplication(tmp_path)
+    summary = run_exact_deduplication(tmp_path)["summary"]
 
     assert summary["duplicate_documents"] == 0
 
 
-def test_stage_01_exact_writes_expected_report_files(tmp_path: Path) -> None:
+def test_stage_01_exact_returns_expected_report_structure(tmp_path: Path) -> None:
     _write_processed_corpus(
         tmp_path,
         [
@@ -114,18 +112,16 @@ def test_stage_01_exact_writes_expected_report_files(tmp_path: Path) -> None:
         ],
     )
 
-    run_exact_deduplication(tmp_path)
+    result = run_exact_deduplication(tmp_path)
 
-    summary_path = tmp_path / "dedup_stage_01_exact_summary.json"
-    report_path = tmp_path / "dedup_stage_01_exact.jsonl"
+    assert not (tmp_path / "dedup_stage_01_exact.jsonl").exists()
+    assert not (tmp_path / "dedup_stage_01_exact_summary.json").exists()
 
-    assert report_path.exists()
-    assert summary_path.exists()
-
-    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    summary = result["summary"]
     assert set(summary) == {
         "documents_scanned",
         "unique_documents",
         "duplicate_documents",
         "duplicate_groups",
     }
+    assert len(result["rows"]) == 2

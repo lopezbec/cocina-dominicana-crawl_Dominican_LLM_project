@@ -5,8 +5,10 @@ from typing import Any, Dict, List
 from dominican_llm_scraper.core.processor.deduplication import (
     run_exact_deduplication,
     run_near_duplicate_deduplication,
+    run_sentence_span_deduplication,
     run_semantic_deduplication,
 )
+from dominican_llm_scraper.core.processor.deduplication.report import build_dedup_report, write_dedup_report
 from dominican_llm_scraper.core.processor.pipeline import process_markdown_to_plain_text
 from dominican_llm_scraper.utils.file_utils import create_safe_filename
 
@@ -32,7 +34,7 @@ def process_all_files(
         for line in f:
             metadata_entries.append(json.loads(line))
 
-    min_content_length: int = config.processing.get("min_content_length", 100)
+    min_content_length: int = config.processing.get("min_content_length", 50)
 
     processed_metadata: List[Dict] = []
     total = len(metadata_entries)
@@ -60,7 +62,7 @@ def process_all_files(
 
             _frontmatter, plain_text = process_markdown_to_plain_text(content)
 
-            if len(plain_text.strip()) < min_content_length:
+            if len(plain_text.strip()) <= min_content_length:
                 print(f"Skipping {filename}: content too short")
                 continue
 
@@ -100,11 +102,31 @@ def process_all_files(
     print(f"Metadata: {metadata_output}")
 
     # Comment out individual stage calls below while validating a single dedup stage in isolation.
-    exact_summary = run_exact_deduplication(output_dir)
-    print(f"Exact dedup duplicates: {exact_summary['duplicate_documents']}")
+    exact_result = run_exact_deduplication(output_dir)
+    print(f"Exact dedup duplicates: {exact_result['summary']['duplicate_documents']}")
 
-    near_summary = run_near_duplicate_deduplication(output_dir)
-    print(f"Near dedup duplicates: {near_summary['duplicate_documents']}")
+    near_result = run_near_duplicate_deduplication(output_dir, exact_result["rows"])
+    print(f"Near dedup duplicates: {near_result['summary']['duplicate_documents']}")
 
-    semantic_summary = run_semantic_deduplication(output_dir)
-    print(f"Semantic dedup duplicates: {semantic_summary['duplicate_documents']}")
+    semantic_result = run_semantic_deduplication(output_dir, exact_result["rows"], near_result["rows"])
+    print(f"Semantic dedup duplicates: {semantic_result['summary']['duplicate_documents']}")
+
+    sentence_span_result = run_sentence_span_deduplication(
+        output_dir,
+        exact_result["rows"],
+        near_result["rows"],
+        semantic_result["pair_edges"],
+    )
+    print(f"Sentence span dedup duplicates: {sentence_span_result['summary']['duplicate_documents']}")
+
+    dedup_report = build_dedup_report(
+        processed_metadata,
+        {
+            "exact": exact_result,
+            "near_duplicate": near_result,
+            "semantic": semantic_result,
+            "sentence_span": sentence_span_result,
+        },
+    )
+    dedup_report_path = write_dedup_report(output_dir, dedup_report)
+    print(f"Dedup report: {dedup_report_path}")

@@ -12,6 +12,8 @@ from typing import Any
 
 import numpy as np
 
+from dominican_llm_scraper.core.processor.deduplication.stage_01_exact import run_exact_deduplication
+from dominican_llm_scraper.core.processor.deduplication.stage_02_near_duplicate import run_near_duplicate_deduplication
 from dominican_llm_scraper.core.processor.deduplication.stage_03_semantic import (
     DEFAULT_MODEL_NAME,
     DEFAULT_NCENTROIDS,
@@ -48,13 +50,12 @@ def _parse_use_gpu(mode: str) -> bool | None:
 
 
 def _select_stage2_survivors(input_dir: Path) -> list[str]:
-    stage_01_report_path = input_dir / "dedup_stage_01_exact.jsonl"
-    stage_02_report_path = input_dir / "dedup_stage_02_near_duplicate.jsonl"
-
-    stage_01_duplicates = {row["doc_id"] for row in _load_jsonl(stage_01_report_path) if row.get("is_duplicate", False)}
+    stage_01_rows = run_exact_deduplication(input_dir)["rows"]
+    stage_02_rows = run_near_duplicate_deduplication(input_dir, stage_01_rows)["rows"]
+    stage_01_duplicates = {row["doc_id"] for row in stage_01_rows if row.get("is_duplicate", False)}
     survivors = [
         row["doc_id"]
-        for row in _load_jsonl(stage_02_report_path)
+        for row in stage_02_rows
         if not row.get("is_duplicate", False) and row["doc_id"] not in stage_01_duplicates
     ]
     return sorted(survivors)
