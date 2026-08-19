@@ -1,0 +1,27 @@
+[project]
+name = "dominican-model-evaluation"
+version = "0.1.0"
+description = "Language-model metrics for the processed Dominican corpus"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+  "accelerate>=0.33.0",
+  "pandas>=2.0.0",
+  "psutil>=5.9.0",
+  "requests>=2.31.0",
+  "torch>=2.0.0,<2.7",
+  "transformers==4.57.3",
+]
+
+[project.optional-dependencies]
+cuda = [
+  "bitsandbytes>=0.43.0; platform_system == 'Linux'",
+]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

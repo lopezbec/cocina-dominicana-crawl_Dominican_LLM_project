@@ -98,7 +98,7 @@ gantt
 
 ```bash
 git clone https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project.git
-cd cocina-dominicana-crawl_Dominican_LLM_project
+cd cocina-dominicana-crawl_Dominican_LLM_project/crawler
 
 make setup
 
@@ -132,7 +132,7 @@ flowchart LR
 
 ```bash
 git clone https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project.git
-cd cocina-dominicana-crawl_Dominican_LLM_project
+cd cocina-dominicana-crawl_Dominican_LLM_project/crawler
 ```
 
 #### Step 2: Install uv Package Manager

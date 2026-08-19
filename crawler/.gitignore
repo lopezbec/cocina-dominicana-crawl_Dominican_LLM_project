@@ -4,10 +4,8 @@ venv/
 __pycache__/
 *.pyc
 *.pyo
-.python-version
 
 # UV
-uv.lock
 
 # IDEs
 .vscode/
@@ -43,7 +41,7 @@ sites/
 # Legacy files (root level only)
 /core/
 utils.py
-config.yml
+/config.yml
 scraping.log
 .DS_Store
 .firecrawl/
