@@ -27,6 +27,14 @@ REPO_ROOT = PROJECT_DIR.parent
 DEFAULT_INPUT_PATH = REPO_ROOT / "crawler" / "data" / "processed"
 DEFAULT_OUTPUT_PATH = PROJECT_DIR / "outputs" / "corpus_metrics.jsonl"
 DEFAULT_MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
+DEFAULT_CONTEXT_UTILIZATION = 0.80
+CONTEXT_LENGTH_ATTRIBUTES = (
+    "max_position_embeddings",
+    "n_positions",
+    "max_sequence_length",
+    "seq_length",
+    "context_length",
+)
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
@@ -42,8 +50,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--id-column", default="document_id")
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID)
     parser.add_argument("--revision", default="main")
-    parser.add_argument("--max-length", type=int, default=2048)
-    parser.add_argument("--stride", type=int, default=1024)
+    parser.add_argument(
+        "--context-utilization",
+        type=float,
+        default=DEFAULT_CONTEXT_UTILIZATION,
+        help="Fraction of the model's declared context capacity used by each window (default: 0.80).",
+    )
+    parser.add_argument(
+        "--max-length",
+        type=int,
+        default=0,
+        help="Optional hard cap for window length after context utilization is applied; 0 selects automatically.",
+    )
+    parser.add_argument(
+        "--stride",
+        type=int,
+        default=0,
+        help="Window advance in tokens; 0 uses half of the effective context window.",
+    )
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--device", choices=("auto", "cpu", "cuda", "mps"), default="auto")
     parser.add_argument("--load-4bit", action="store_true")
@@ -205,6 +229,74 @@ def load_model_and_tokenizer(args: argparse.Namespace, device: str) -> Tuple[Any
     return tokenizer, model, input_device, quantization
 
 
+def _valid_context_length(value: Any) -> Optional[int]:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    # Hugging Face uses extremely large integers as an "unknown" tokenizer limit.
+    return parsed if 2 <= parsed < 10_000_000 else None
+
+
+def resolve_context_window(
+    tokenizer: Any,
+    model: Any,
+    context_utilization: float,
+    requested_max_length: int = 0,
+    requested_stride: int = 0,
+) -> Dict[str, Any]:
+    if not 0 < context_utilization <= 1:
+        raise ValueError("--context-utilization must be greater than 0 and at most 1")
+    if requested_max_length < 0:
+        raise ValueError("--max-length cannot be negative")
+
+    candidates: List[Dict[str, Any]] = []
+    configs = [("model.config", getattr(model, "config", None))]
+    text_config = getattr(getattr(model, "config", None), "text_config", None)
+    if text_config is not None:
+        configs.append(("model.config.text_config", text_config))
+
+    for prefix, config in configs:
+        for attribute in CONTEXT_LENGTH_ATTRIBUTES:
+            value = _valid_context_length(getattr(config, attribute, None))
+            if value is not None:
+                candidates.append({"source": f"{prefix}.{attribute}", "tokens": value})
+
+    tokenizer_limit = _valid_context_length(getattr(tokenizer, "model_max_length", None))
+    if tokenizer_limit is not None:
+        candidates.append({"source": "tokenizer.model_max_length", "tokens": tokenizer_limit})
+
+    if not candidates:
+        raise ValueError(
+            "Could not determine the model context capacity from the model config or tokenizer; "
+            "a declared context limit is required for automatic 80% utilization"
+        )
+
+    maximum_context_length = min(candidate["tokens"] for candidate in candidates)
+    utilized_context_length = max(2, math.floor(maximum_context_length * context_utilization))
+    effective_context_length = (
+        min(utilized_context_length, requested_max_length) if requested_max_length else utilized_context_length
+    )
+    if effective_context_length < 2:
+        raise ValueError("The effective context window must contain at least 2 tokens")
+
+    stride = requested_stride or max(1, effective_context_length // 2)
+    if stride < 1 or stride >= effective_context_length:
+        raise ValueError("--stride must be at least 1 and smaller than the effective context window")
+
+    return {
+        "maximum_context_length": maximum_context_length,
+        "context_utilization": context_utilization,
+        "utilized_context_length": utilized_context_length,
+        "effective_context_length": effective_context_length,
+        "stride": stride,
+        "context_length_candidates": candidates,
+        "max_length_hard_cap": requested_max_length or None,
+    }
+
+
 def sanitize_name(value: str) -> str:
     cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "_", value).strip("_")
     return cleaned[:120] or "sample"
@@ -248,10 +340,11 @@ def score_document(
     total_negative_log_likelihood = 0.0
     predicted_token_count = 0
     token_logprobs: List[Dict[str, Any]] = []
+    chunk_metrics: List[Dict[str, Any]] = []
     previous_end = 0
     final_logits: Optional[torch.Tensor] = None
 
-    for begin in range(0, len(token_ids), stride):
+    for chunk_index, begin in enumerate(range(0, len(token_ids), stride), start=1):
         end = min(begin + max_length, len(token_ids))
         target_length = end - previous_end
         chunk = torch.tensor([token_ids[begin:end]], dtype=torch.long, device=input_device)
@@ -260,6 +353,8 @@ def score_document(
         if context_length > 0:
             labels[:, :context_length] = -100
 
+        synchronize(input_device)
+        chunk_started = time.perf_counter()
         with torch.inference_mode():
             logits = model(input_ids=chunk, use_cache=False, return_dict=True).logits
             shifted_logits = logits[:, :-1, :]
@@ -268,10 +363,13 @@ def score_document(
             log_probs = torch.log_softmax(shifted_logits, dim=-1, dtype=torch.float32)
             safe_labels = shifted_labels.masked_fill(~mask, 0)
             selected = log_probs.gather(-1, safe_labels.unsqueeze(-1)).squeeze(-1)[mask]
+        synchronize(input_device)
+        chunk_runtime_seconds = time.perf_counter() - chunk_started
 
         count = int(mask.sum().item())
+        chunk_nll = float(-selected.sum().item()) if count else 0.0
         if count:
-            total_negative_log_likelihood += float(-selected.sum().item())
+            total_negative_log_likelihood += chunk_nll
             predicted_token_count += count
             if collect_token_logprobs:
                 local_positions = torch.arange(1, chunk.shape[1], device=input_device)[mask.squeeze(0)]
@@ -288,6 +386,26 @@ def score_document(
                             "log_probability": float(log_probability),
                         }
                     )
+
+        chunk_cross_entropy = chunk_nll / count if count else None
+        chunk_metrics.append(
+            {
+                "chunk_index": chunk_index,
+                "token_start_index": begin,
+                "token_end_index_exclusive": end,
+                "window_token_count": end - begin,
+                "context_token_count": context_length,
+                "scored_token_start_index": 1 if begin == 0 else previous_end,
+                "scored_token_end_index_exclusive": end,
+                "predicted_token_count": count,
+                "total_negative_log_likelihood": chunk_nll,
+                "per_token_cross_entropy_loss": chunk_cross_entropy,
+                "mean_negative_log_likelihood": chunk_cross_entropy,
+                "perplexity": safe_exp(chunk_cross_entropy) if chunk_cross_entropy is not None else None,
+                "runtime_seconds": chunk_runtime_seconds,
+                "scoring_tokens_per_second": count / chunk_runtime_seconds if chunk_runtime_seconds > 0 else None,
+            }
+        )
 
         final_logits = logits[:, -1, :]
         previous_end = end
@@ -306,6 +424,7 @@ def score_document(
         "predicted_token_count": predicted_token_count,
         "final_logits": final_logits,
         "token_logprobs": token_logprobs,
+        "chunks": chunk_metrics,
     }
 
 
@@ -340,6 +459,7 @@ def evaluate_row(
     input_device: torch.device,
     quantization: str,
     artifacts_dir: Path,
+    context_window: Dict[str, Any],
 ) -> Dict[str, Any]:
     text = str(row["text"])
     if not text.strip():
@@ -361,8 +481,8 @@ def evaluate_row(
         token_ids=token_ids,
         model=model,
         input_device=input_device,
-        max_length=args.max_length,
-        stride=args.stride,
+        max_length=context_window["effective_context_length"],
+        stride=context_window["stride"],
         collect_token_logprobs=args.save_token_logprobs,
     )
     synchronize(input_device)
@@ -392,11 +512,16 @@ def evaluate_row(
         "mean_negative_log_likelihood": cross_entropy,
         "perplexity": safe_exp(cross_entropy),
         "bits_per_byte": total_nll / (math.log(2) * byte_count),
-        "max_length": args.max_length,
-        "stride": args.stride,
-        "window_count": math.ceil(max(1, len(token_ids) - args.max_length) / args.stride) + 1
-        if len(token_ids) > args.max_length
-        else 1,
+        "maximum_context_length": context_window["maximum_context_length"],
+        "context_utilization": context_window["context_utilization"],
+        "utilized_context_length": context_window["utilized_context_length"],
+        "effective_context_length": context_window["effective_context_length"],
+        "max_length": context_window["effective_context_length"],
+        "max_length_hard_cap": context_window["max_length_hard_cap"],
+        "stride": context_window["stride"],
+        "context_length_candidates": context_window["context_length_candidates"],
+        "window_count": len(scored["chunks"]),
+        "chunks": scored["chunks"],
         "runtime_seconds": runtime_seconds,
         "scoring_tokens_per_second": predicted_count / runtime_seconds if runtime_seconds > 0 else None,
         "ram_before_mb": ram_before_mb,
@@ -468,6 +593,11 @@ def build_summary(results: Sequence[Dict[str, Any]], args: argparse.Namespace) -
         "perplexity": safe_exp(cross_entropy),
         "bits_per_byte": total_nll / (math.log(2) * byte_count),
         "tokenizer_fertility": token_count / word_count,
+        "maximum_context_length": successful[0].get("maximum_context_length"),
+        "context_utilization": successful[0].get("context_utilization"),
+        "effective_context_length": successful[0].get("effective_context_length"),
+        "stride": successful[0].get("stride"),
+        "total_chunk_count": sum(int(row.get("window_count", 0)) for row in successful),
     }
 
 
@@ -498,16 +628,39 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     LOGGER.info("Loading %s on %s", args.model_id, device)
     try:
         tokenizer, model, input_device, quantization = load_model_and_tokenizer(args, device)
+        context_window = resolve_context_window(
+            tokenizer=tokenizer,
+            model=model,
+            context_utilization=args.context_utilization,
+            requested_max_length=args.max_length,
+            requested_stride=args.stride,
+        )
     except Exception as exc:
         LOGGER.error("Model/tokenizer load failed: %s", exc)
         return 1
 
+    LOGGER.info(
+        "Using %s of model context: %s/%s tokens per window, stride=%s",
+        f"{context_window['context_utilization']:.0%}",
+        context_window["effective_context_length"],
+        context_window["maximum_context_length"],
+        context_window["stride"],
+    )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     results: List[Dict[str, Any]] = []
     with output_path.open("w", encoding="utf-8") as output_handle:
         for row in rows:
             try:
-                result = evaluate_row(row, args, tokenizer, model, input_device, quantization, artifacts_dir)
+                result = evaluate_row(
+                    row,
+                    args,
+                    tokenizer,
+                    model,
+                    input_device,
+                    quantization,
+                    artifacts_dir,
+                    context_window,
+                )
             except Exception as exc:
                 LOGGER.exception("Document %s failed", row["sample_id"])
                 result = build_error_result(row, args.model_id, str(exc))
