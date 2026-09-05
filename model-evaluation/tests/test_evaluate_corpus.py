@@ -195,7 +195,7 @@ def test_build_summary_weights_metrics_by_tokens_bytes_and_words():
     args = SimpleNamespace(
         model_id="test/model",
         revision="main",
-        input_path="crawler/data/processed",
+        input_path="processor/data/processed",
     )
 
     summary = build_summary(results, args)

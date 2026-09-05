@@ -16,26 +16,9 @@ keywords = [
 ]
 
 dependencies = [
+  "firecrawl-py>=4.18.0",
   "python-dotenv>=1.2.1",
   "pyyaml>=6.0.3",
-  "playwright>=1.54.0",
-  "ruff>=0.14.9",
-  "wordfreq>=3.1.1",
-  "colorlog>=6.8.2",
-  "pandas>=2.3.3",
-  "matplotlib>=3.9.4",
-  "seaborn>=0.13.2",
-  "scikit-learn>=1.6.1",
-  "nltk>=3.9.2",
-  "jupyter>=1.1.1",
-  "ipykernel>=6.31.0",
-  "firecrawl-py>=4.18.0",
-  "reportlab>=4.4.10",
-  "datasketch>=1.6.5",
-  "chromadb>=1.0.20",
-  "faiss-cpu>=1.9.0",
-  "pyarrow>=18.1.0",
-  "pip>=26.0.1",
 ]
 
 [build-system]
@@ -44,7 +27,11 @@ build-backend = "hatchling.build"
 
 [tool.ruff]
 line-length = 120
-src = ["src"]
+src = ["src", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
 
 [tool.uv]
 package = true
@@ -53,7 +40,7 @@ package = true
 packages = ["src/dominican_llm_scraper"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/dominican_llm_scraper", "readme.markdown", "config", "docs", "makefile"]
+include = ["src/dominican_llm_scraper", "readme.markdown", "config", "Makefile"]
 
 [project.urls]
 Homepage = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project"
@@ -61,4 +48,4 @@ Repository = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_
 Issues = "https://github.com/lopezbec/cocina-dominicana-crawl_Dominican_LLM_project/issues"
 
 [dependency-groups]
-dev = ["pytest>=7.0", "pytest-cov>=4.0"]
+dev = ["pytest>=8.0", "pytest-cov>=4.0", "ruff>=0.14.0"]

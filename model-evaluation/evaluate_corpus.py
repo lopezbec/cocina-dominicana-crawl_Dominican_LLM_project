@@ -24,7 +24,7 @@ from llm_eval_common import safe_exp
 LOGGER = logging.getLogger("corpus_eval")
 PROJECT_DIR = Path(__file__).resolve().parent
 REPO_ROOT = PROJECT_DIR.parent
-DEFAULT_INPUT_PATH = REPO_ROOT / "crawler" / "data" / "processed"
+DEFAULT_INPUT_PATH = REPO_ROOT / "processor" / "data" / "processed"
 DEFAULT_OUTPUT_PATH = PROJECT_DIR / "outputs" / "corpus_metrics.jsonl"
 DEFAULT_MODEL_ID = "Qwen/Qwen3-4B-Instruct-2507"
 DEFAULT_CONTEXT_UTILIZATION = 0.80

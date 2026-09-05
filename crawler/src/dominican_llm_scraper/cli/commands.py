@@ -176,30 +176,6 @@ def scrape_command(args):
     return 0 if total_failed == 0 else 1
 
 
-def process_to_plaintext(args):
-    """Process scraped markdown to plaintext."""
-    from dominican_llm_scraper.core.processor.batch import process_all_files
-    from dominican_llm_scraper.core.config_loader import load_config
-
-    # Load global config for processing settings
-    config = load_config()
-
-    input_dir = Path(args.input) if args.input else Path(config.get("output_dir", "data/raw"))
-    output_dir = Path(args.output) if args.output else Path(config.get("plaintext_output_dir", "data/processed"))
-
-    if not input_dir.exists():
-        print(f"Error: Input directory '{input_dir}' does not exist")
-        print("Run scraping command first to generate content")
-        return 1
-
-    print("Processing content to plaintext")
-    print(f"Input: {input_dir}")
-    print(f"Output: {output_dir}\n")
-
-    process_all_files(input_dir, output_dir, config, processing_patterns=None)
-    return 0
-
-
 def main():
     config = load_config()
     setup_logging(log_file=config.get("log_file"))
@@ -218,11 +194,8 @@ def main():
                 Scrape from custom URLs file:
                     %(prog)s scrape --urls-file custom_urls.yml
 
-                Force reprocess all URLs:
+                Revisit every configured seed:
                     %(prog)s scrape --force
-
-                Process to plaintext:
-                    %(prog)s process
             """,
     )
 
@@ -235,12 +208,6 @@ def main():
     scrape_parser.add_argument("--force", action="store_true", help="Reprocess already-processed URLs")
     scrape_parser.add_argument("--no-update", action="store_true", help="Don't update processed status in config")
     scrape_parser.set_defaults(func=scrape_command)
-
-    # Process command
-    process_parser = subparsers.add_parser("process", help="Process scraped markdown to plain text")
-    process_parser.add_argument("--input", help="Input directory (default: from config)")
-    process_parser.add_argument("--output", help="Output directory (default: from config)")
-    process_parser.set_defaults(func=process_to_plaintext)
 
     args = parser.parse_args()
 

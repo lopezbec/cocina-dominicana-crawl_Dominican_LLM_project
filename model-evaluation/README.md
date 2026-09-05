@@ -8,7 +8,7 @@
 cd model-evaluation
 uv run python evaluate_corpus.py \
   --model-id Qwen/Qwen3-4B-Instruct-2507 \
-  --input-path ../crawler/data/processed \
+  --input-path ../processor/data/processed \
   --output-jsonl outputs/qwen3_metrics.jsonl \
   --overwrite
 ```
@@ -158,7 +158,7 @@ Optional `target_token_logprobs` artifacts contain the individual teacher-forced
 uv run python run_ollama_runtime_eval.py \
   --model qwen3:4b \
   --tokenizer-id Qwen/Qwen3-4B \
-  --input-path ../crawler/data/processed \
+  --input-path ../processor/data/processed \
   --output-jsonl outputs/qwen3_ollama_runtime.jsonl \
   --overwrite
 ```

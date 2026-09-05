@@ -19,7 +19,7 @@ from transformers import AutoTokenizer
 from llm_eval_common import append_jsonl, ns_to_seconds, repo_root, reset_output, safe_rate, validate_output
 
 LOGGER = logging.getLogger("ollama_eval")
-DEFAULT_INPUT_PATH = repo_root() / "crawler" / "data" / "processed"
+DEFAULT_INPUT_PATH = repo_root() / "processor" / "data" / "processed"
 DEFAULT_OUTPUT_PATH = repo_root() / "model-evaluation" / "outputs" / "ollama_runtime_results.jsonl"
 DEFAULT_CONTEXT_UTILIZATION = 0.80
 DEFAULT_TOKENIZER_ID = "Qwen/Qwen3-4B"

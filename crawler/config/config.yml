@@ -1,6 +1,5 @@
 run_dir: run
 output_dir: data/raw
-plaintext_output_dir: data/processed
 log_file: run/logs/scraping.log
 crawler:
   max_depth: 2
@@ -22,5 +21,3 @@ filters:
     - pinterest\.com
     - twitter\.com
     - "#"
-processing:
-  min_content_length: 50

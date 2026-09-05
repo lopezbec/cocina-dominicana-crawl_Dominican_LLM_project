@@ -11,20 +11,20 @@ The documentation follows that same path through the repository:
 Each section is collapsed so that this README can serve as both a short entry point and a detailed implementation guide. Open a section for commands, data contracts, code links, and limitations. Generated corpus data and evaluation outputs are intentionally ignored by Git; the repository contains the pipeline, not a published dataset snapshot.
 
 ```text
-config/urls.yml
-      │
-      ▼
-local Firecrawl ──► data/raw/*.md + metadata.jsonl
-                              │
-                              ▼
-                  text normalization pipeline
-                              │
-                              ▼
-              data/processed/*.txt + metadata_plaintext.jsonl
-                              │
-                    ┌─────────┴─────────┐
-                    ▼                   ▼
-             dedup_report.json    model evaluation JSONL
+crawler/config/urls.yml
+          │
+          ▼
+local Firecrawl ──► crawler/data/raw/*.md + metadata.jsonl
+                                      │
+                                      ▼
+                             processor pipeline
+                                      │
+                                      ▼
+              processor/data/processed/*.txt + metadata_plaintext.jsonl
+                                      │
+                            ┌─────────┴─────────┐
+                            ▼                   ▼
+                   dedup_report.json    model evaluation JSONL
 ```
 
 <details>
@@ -32,24 +32,27 @@ local Firecrawl ──► data/raw/*.md + metadata.jsonl
 
 ## Repository map
 
-The crawler and evaluator are separate Python projects. Run their commands from their own directories so that relative configuration and output paths resolve correctly.
+The crawler, processor, and evaluator are separate Python projects. Run their commands from their own directories. Repository-wide installation, testing, linting, and remote synchronization are available from the root [`Makefile`](Makefile).
 
 ```text
 .
 ├── crawler/
-│   ├── config/
-│   │   ├── config.yml                 # paths, crawl timing, and URL filters
-│   │   └── urls.yml                   # crawl seeds and processed flags
-│   ├── firecrawl/
-│   │   └── docker-compose.yml         # local Firecrawl stack
-│   ├── src/dominican_llm_scraper/
-│   │   ├── cli/commands.py            # scrape and process commands
-│   │   ├── core/crawler.py            # discovery, scraping, and persistence
-│   │   └── core/processor/            # cleaning and deduplication
+│   ├── config/                        # crawl registry and URL filters
+│   ├── firecrawl/                     # local Firecrawl Docker stack
+│   ├── src/dominican_llm_scraper/     # discovery, scraping, and persistence
+│   ├── data/raw/                      # generated Markdown and metadata
+│   ├── Makefile
+│   └── pyproject.toml
+├── processor/
+│   ├── config/                        # raw input and processed output paths
+│   ├── src/dominican_llm_processor/   # cleaning and deduplication
+│   ├── tests/                         # processor unit and integration tests
 │   ├── scripts/                       # comparison and validation reports
-│   ├── tests/                         # cleaning and deduplication tests
-│   ├── Makefile                       # common crawler commands
-│   └── pyproject.toml                 # crawler environment, Python >= 3.9
+│   ├── experiments/                   # exploratory corpus preparation scripts
+│   ├── notebooks/                     # corpus EDA
+│   ├── data/processed/                # generated plain text and reports
+│   ├── Makefile
+│   └── pyproject.toml                 # processor environment, Python 3.11–3.12
 └── model-evaluation/
     ├── evaluate_corpus.py             # Hugging Face corpus scoring
     ├── run_ollama_runtime_eval.py     # Ollama generation/runtime evaluation
@@ -65,8 +68,8 @@ The important generated paths are:
 | Path | Produced by | Contents |
 |---|---|---|
 | `crawler/data/raw/` | crawler | Firecrawl Markdown plus `metadata.jsonl` |
-| `crawler/data/processed/` | cleaning pipeline | plain-text documents, metadata, and the current deduplication report |
-| `crawler/reports/` | report scripts | optional PDF comparisons; ignored by Git |
+| `processor/data/processed/` | processor | plain-text documents, metadata, and the current deduplication report |
+| `processor/reports/` | processor report scripts | optional PDF comparisons; ignored by Git |
 | `model-evaluation/outputs/` | evaluation scripts | JSONL results, summaries, and optional tensors; ignored by Git |
 
 </details>
@@ -110,7 +113,7 @@ urls:
 
 ```yaml
 output_dir: data/raw
-plaintext_output_dir: data/processed
+log_file: run/logs/scraping.log
 
 crawler:
   max_depth: 2
@@ -118,9 +121,6 @@ crawler:
   skip_existing: true
   max_retries: 3
   base_retry_delay: 2
-
-processing:
-  min_content_length: 50
 ```
 
 It also contains regular expressions that reject media, feeds, comment pages, social-media links, fragments, and other unwanted URL shapes. [`load_config()`](crawler/src/dominican_llm_scraper/core/config_loader.py) can merge an optional `config/sites/<domain_slug>/config.yml` over the global file. Scalars override, dictionaries merge recursively, and lists append. No site-specific configuration files are currently checked in, so the shared configuration is the active configuration in this repository.
@@ -216,19 +216,20 @@ A few details matter:
 Cleaning is deterministic text transformation followed by four duplicate-detection stages. The order is intentional: inexpensive exact checks remove obvious repetitions before embedding-based comparisons are attempted.
 
 ```console
-$ cd crawler
+$ cd processor
+$ uv sync
 $ ollama pull qwen3-embedding:0.6b
 $ ollama serve
 
-# In another terminal
+# In another terminal, from processor/
 $ make process
 ```
 
-`make process` reads raw metadata, converts each referenced Markdown file, writes plain text, and then runs all four deduplication stages. The semantic stage fails fast if Ollama is unavailable or if `qwen3-embedding:0.6b` is not installed.
+[`processor/config/config.yml`](processor/config/config.yml) points the processor at `../crawler/data/raw` and writes results under `processor/data/processed`. `make process` reads raw metadata, converts each referenced Markdown file, writes plain text, and then runs all four deduplication stages. The semantic stage fails fast if Ollama is unavailable or if `qwen3-embedding:0.6b` is not installed.
 
 ### Plain-text transformation
 
-[`process_markdown_to_plain_text()`](crawler/src/dominican_llm_scraper/core/processor/pipeline.py) applies five functions in this exact order:
+[`process_markdown_to_plain_text()`](processor/src/dominican_llm_processor/pipeline.py) applies five functions in this exact order:
 
 ```text
 Markdown
@@ -245,20 +246,20 @@ plain text
 
 | Step | Implementation | What it does |
 |---|---|---|
-| Markdown to text | [`step_01_markdown_to_text.py`](crawler/src/dominican_llm_scraper/core/processor/step_01_markdown_to_text.py) | Renders Markdown with Mistune, including tables, then extracts text with Beautiful Soup. |
-| Generic noise | [`step_02_generic_noise.py`](crawler/src/dominican_llm_scraper/core/processor/step_02_generic_noise.py) | Removes narrowly defined lines such as “skip to,” language toggles, table-of-contents labels, display controls, and separator-only lines. |
-| Whitespace | [`step_03_whitespace.py`](crawler/src/dominican_llm_scraper/core/processor/step_03_whitespace.py) | Converts line endings, collapses spaces and tabs, limits consecutive blank lines, and removes trailing whitespace. |
-| Wrapped lines | [`step_04_line_joiner.py`](crawler/src/dominican_llm_scraper/core/processor/step_04_line_joiner.py) | Joins likely prose continuations while preserving list items and sentence-ending boundaries. |
-| Inline punctuation | [`step_05_inline_punctuation.py`](crawler/src/dominican_llm_scraper/core/processor/step_05_inline_punctuation.py) | Removes isolated `*`, `_`, and backtick markers and trims the result. |
+| Markdown to text | [`step_01_markdown_to_text.py`](processor/src/dominican_llm_processor/step_01_markdown_to_text.py) | Renders Markdown with Mistune, including tables, then extracts text with Beautiful Soup. |
+| Generic noise | [`step_02_generic_noise.py`](processor/src/dominican_llm_processor/step_02_generic_noise.py) | Removes narrowly defined lines such as “skip to,” language toggles, table-of-contents labels, display controls, and separator-only lines. |
+| Whitespace | [`step_03_whitespace.py`](processor/src/dominican_llm_processor/step_03_whitespace.py) | Converts line endings, collapses spaces and tabs, limits consecutive blank lines, and removes trailing whitespace. |
+| Wrapped lines | [`step_04_line_joiner.py`](processor/src/dominican_llm_processor/step_04_line_joiner.py) | Joins likely prose continuations while preserving list items and sentence-ending boundaries. |
+| Inline punctuation | [`step_05_inline_punctuation.py`](processor/src/dominican_llm_processor/step_05_inline_punctuation.py) | Removes isolated `*`, `_`, and backtick markers and trims the result. |
 
-An experimental English-word filter exists in [`step_06_english_filter.py`](crawler/src/dominican_llm_scraper/core/processor/step_06_english_filter.py), but the active pipeline does not import or invoke it. English tokens are **not** removed by the current `make process` path.
+An experimental English-word filter exists in [`step_06_english_filter.py`](processor/src/dominican_llm_processor/step_06_english_filter.py), but the active pipeline does not import or invoke it. English tokens are **not** removed by the current `make process` path.
 
-[`process_all_files()`](crawler/src/dominican_llm_scraper/core/processor/batch.py) uses `data/raw/metadata.jsonl` as its source of truth. For each metadata row it reconstructs the expected raw filename, runs the pipeline, and skips output whose stripped length is 50 characters or fewer under the default configuration.
+[`process_all_files()`](processor/src/dominican_llm_processor/batch.py) uses `crawler/data/raw/metadata.jsonl` as its source of truth. For each metadata row it reconstructs the expected raw filename, runs the pipeline, and skips output whose stripped length is 50 characters or fewer under the default processor configuration.
 
 The result is:
 
 ```text
-data/processed/
+processor/data/processed/
 ├── 0001_cocinadominicana_com_example.txt
 ├── 0002_cocinadominicana_com_another-page.txt
 ├── metadata_plaintext.jsonl
@@ -273,7 +274,7 @@ The stages return evidence and canonical IDs; they do not delete or rewrite the 
 
 #### Stage 1: exact normalized text
 
-[`stage_01_exact.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_01_exact.py) normalizes line endings, trims the document, and computes a SHA-256 hash. The first document with a hash is canonical; later documents with the same hash are duplicates.
+[`stage_01_exact.py`](processor/src/dominican_llm_processor/deduplication/stage_01_exact.py) normalizes line endings, trims the document, and computes a SHA-256 hash. The first document with a hash is canonical; later documents with the same hash are duplicates.
 
 ```text
 normalization: line endings + outer whitespace
@@ -283,7 +284,7 @@ short-doc skip: none
 
 #### Stage 2: near-duplicate wording
 
-[`stage_02_near_duplicate.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_02_near_duplicate.py) receives only Stage 1 survivors. It lowercases and whitespace-normalizes each document, tokenizes words, and builds five-token shingles. MinHash LSH proposes candidates; exact Jaccard similarity makes the final decision.
+[`stage_02_near_duplicate.py`](processor/src/dominican_llm_processor/deduplication/stage_02_near_duplicate.py) receives only Stage 1 survivors. It lowercases and whitespace-normalizes each document, tokenizes words, and builds five-token shingles. MinHash LSH proposes candidates; exact Jaccard similarity makes the final decision.
 
 ```text
 shingle size:       5 words
@@ -296,7 +297,7 @@ Connected candidate pairs form groups, and the earliest document in processing o
 
 #### Stage 3: semantic similarity
 
-[`stage_03_semantic.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_03_semantic.py) receives Stage 2 survivors and asks local Ollama for embeddings:
+[`stage_03_semantic.py`](processor/src/dominican_llm_processor/deduplication/stage_03_semantic.py) receives Stage 2 survivors and asks local Ollama for embeddings:
 
 1. Normalize and tokenize each document.
 2. Skip documents shorter than 50 tokens.
@@ -312,7 +313,7 @@ Clustering is a candidate-reduction step. Documents assigned to different cluste
 
 #### Stage 4: exact repeated sentence spans
 
-[`stage_04_sentence_spans.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_04_sentence_spans.py) does not compare every pair in the corpus. It starts from Stage 3 pair edges with cosine similarity at or above `0.90`, keeps same-domain pairs by default, and looks for an identical run of three consecutive sentences.
+[`stage_04_sentence_spans.py`](processor/src/dominican_llm_processor/deduplication/stage_04_sentence_spans.py) does not compare every pair in the corpus. It starts from Stage 3 pair edges with cosine similarity at or above `0.90`, keeps same-domain pairs by default, and looks for an identical run of three consecutive sentences.
 
 Whitespace is normalized before span hashing, but case, punctuation, and accents remain significant. A match therefore supplies concrete copied-span evidence for a pair that semantic similarity had already nominated.
 
@@ -325,7 +326,7 @@ match requirement:     exact 3-sentence span
 
 ### Consolidated report
 
-[`report.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/report.py) combines all stages into `data/processed/dedup_report.json`. It contains:
+[`report.py`](processor/src/dominican_llm_processor/deduplication/report.py) combines all stages into `processor/data/processed/dedup_report.json`. It contains:
 
 - overall scanned, duplicate, kept, and group counts;
 - each stage's parameters and counts;
@@ -335,22 +336,22 @@ match requirement:     exact 3-sentence span
 
 When more than one stage flags the same document, the later stage has reporting priority: exact, near-duplicate, semantic, then sentence span. This changes which evidence is displayed; it does not mean that an earlier match was invalid.
 
-The checked-in [`crawler/dedup_report.json`](crawler/dedup_report.json) is a snapshot from an earlier run, not a file kept in sync with local `data/processed/`. It records 2,394 scanned documents, 844 flagged duplicates, and 1,550 kept documents. Re-run `make process` to produce a report for the data currently present on a machine.
+The checked-in [`processor/dedup_report.json`](processor/dedup_report.json) is a snapshot from an earlier run, not a file kept in sync with local `processor/data/processed/`. It records 2,394 scanned documents, 844 flagged duplicates, and 1,550 kept documents. Re-run `make process` to produce a report for the data currently present on a machine.
 
 ### Reviewing the transformation
 
 A side-by-side PDF is useful before accepting a cleaning rule:
 
 ```console
-$ cd crawler
+$ cd processor
 $ make compare-pdf IDS=0002,0080,0809
 ```
 
-[`generate_comparison_pdf.py`](crawler/scripts/generate_comparison_pdf.py) resolves matching raw and processed files and renders them in review blocks. Stage 3 also has a runtime estimator and synthetic coherence tools:
+[`generate_comparison_pdf.py`](processor/scripts/generate_comparison_pdf.py) resolves matching raw and processed files and renders them in review blocks. Stage 3 also has a runtime estimator and synthetic coherence tools:
 
-- [`estimate_stage3_runtime.py`](crawler/scripts/estimate_stage3_runtime.py)
-- [`run_synthetic_stage3_validation.py`](crawler/scripts/run_synthetic_stage3_validation.py)
-- [`generate_semantic_pairs_pdf.py`](crawler/scripts/generate_semantic_pairs_pdf.py)
+- [`estimate_stage3_runtime.py`](processor/scripts/estimate_stage3_runtime.py)
+- [`run_synthetic_stage3_validation.py`](processor/scripts/run_synthetic_stage3_validation.py)
+- [`generate_semantic_pairs_pdf.py`](processor/scripts/generate_semantic_pairs_pdf.py)
 
 ### What the cleaning does not guarantee
 
@@ -386,7 +387,7 @@ $ uv sync
 ```console
 $ uv run python evaluate_corpus.py \
     --model-id Qwen/Qwen3-4B-Instruct-2507 \
-    --input-path ../crawler/data/processed \
+    --input-path ../processor/data/processed \
     --output-jsonl outputs/qwen3_metrics.jsonl \
     --overwrite
 ```
@@ -486,7 +487,7 @@ The summary combines total NLL and scored-token counts before calculating cross-
 
 ```console
 $ uv run python evaluate_corpus.py \
-    --input-path ../crawler/data/processed/0001_example.txt \
+    --input-path ../processor/data/processed/0001_example.txt \
     --save-token-logprobs \
     --save-final-logits \
     --save-final-probability-vector \
@@ -505,7 +506,7 @@ $ cd model-evaluation
 $ uv run python run_ollama_runtime_eval.py \
     --model qwen3:4b \
     --tokenizer-id Qwen/Qwen3-4B \
-    --input-path ../crawler/data/processed \
+    --input-path ../processor/data/processed \
     --output-jsonl outputs/qwen3_ollama_runtime.jsonl \
     --limit 0 \
     --overwrite
@@ -570,22 +571,27 @@ For a field-by-field metric reference, see [`model-evaluation/README.md`](model-
 
 ## Development and verification
 
-Use each project's locked environment:
+The root Makefile operates all three locked environments:
 
 ```console
-$ cd crawler
-$ uv sync
-$ uv run python -m pytest tests/core
-$ uv run ruff check src tests scripts
-
-$ cd ../model-evaluation
-$ uv sync
-$ uv run pytest
+$ make install
+$ make lint
+$ make test
 ```
 
-The crawler core tests focus on text conversion, minimum-length handling, exact/near/semantic/sentence-span deduplication, and report consolidation. Real Ollama integration tests skip when the service or embedding model is unavailable. The separate `tests/scripts` harness expects a persistent fixture under `crawler/data/synthetic_stage3/`; that generated fixture is ignored and is not included in a fresh checkout. There is not currently an automated end-to-end test of the live Firecrawl crawl path.
+The processor tests focus on text conversion, minimum-length handling, exact/near/semantic/sentence-span deduplication, and report consolidation. Real Ollama integration tests skip when the service or embedding model is unavailable. The separate `processor/tests/scripts` harness expects a persistent fixture under `processor/data/synthetic_stage3/`; that generated fixture is ignored and is not included in a fresh checkout.
 
-The evaluation tests use a small deterministic causal model and fake tokenizer data; they verify token accounting and formulas without downloading a production model. Real model runs remain hardware- and checkpoint-dependent integration work.
+The crawler unit tests cover its configuration helpers, but there is not yet an automated end-to-end test of the live Firecrawl path. Its tests and Ruff check are included in the root commands. The evaluation tests use a small deterministic causal model and fake tokenizer data; they verify token accounting and formulas without downloading a production model. Real model runs remain hardware- and checkpoint-dependent integration work.
+
+### Synchronizing the complete workspace
+
+Remote synchronization belongs to the repository rather than to any one pillar. Copy [`.env.example`](.env.example) to `.env`, fill in the four `SYNC_REMOTE_*` values, install `unison` and `sshpass` locally, and run:
+
+```console
+$ make sync
+```
+
+The root target synchronizes `crawler/`, `processor/`, `model-evaluation/`, and the root documentation and support files. This includes generated raw data, processed data, reports, and evaluation outputs. It excludes credentials, virtual environments, caches, and Git internals. The same Unison version must be available on the remote host.
 
 Before changing a heuristic:
 
