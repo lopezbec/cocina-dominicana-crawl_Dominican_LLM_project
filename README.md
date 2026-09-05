@@ -28,7 +28,7 @@ local Firecrawl ──► data/raw/*.md + metadata.jsonl
 ```
 
 <details>
-<summary><strong>Repository map</strong> — where each part lives</summary>
+<summary><strong>Repository map:</strong> where each part lives</summary>
 
 ## Repository map
 
@@ -72,7 +72,7 @@ The important generated paths are:
 </details>
 
 <details>
-<summary><strong>1. Crawling</strong> — from seed URLs to raw Markdown</summary>
+<summary><strong>1. Crawling:</strong> from seed URLs to raw Markdown</summary>
 
 ## Crawling
 
@@ -156,7 +156,7 @@ File names follow:
 {four_digit_doc_id}_{domain_with_underscores}_{safe_url_slug}.md
 ```
 
-A metadata line contains the page title and description reported by Firecrawl, the source URL, URL slug, domain, scrape timestamp, raw word and character counts, document ID, and—when discovered from a configured seed—the category name.
+A metadata line contains the page title and description reported by Firecrawl, the source URL, URL slug, domain, scrape timestamp, raw word and character counts, document ID, and, when discovered from a configured seed, the category name.
 
 ```json
 {
@@ -200,16 +200,16 @@ A few details matter:
 
 ### Files worth reading
 
-- [`cli/commands.py`](crawler/src/dominican_llm_scraper/cli/commands.py) — argument handling, registry selection, summaries, and exit codes.
-- [`core/config_loader.py`](crawler/src/dominican_llm_scraper/core/config_loader.py) — domain detection, configuration merging, and registry updates.
-- [`core/crawler.py`](crawler/src/dominican_llm_scraper/core/crawler.py) — Firecrawl calls, discovery, retries, filters, and persistence.
-- [`utils/logging.py`](crawler/src/dominican_llm_scraper/utils/logging.py) — session IDs and `key=value` event logs.
-- [`crawler/Makefile`](crawler/Makefile) — the commands actually available to operators.
+- [`cli/commands.py`](crawler/src/dominican_llm_scraper/cli/commands.py): argument handling, registry selection, summaries, and exit codes.
+- [`core/config_loader.py`](crawler/src/dominican_llm_scraper/core/config_loader.py): domain detection, configuration merging, and registry updates.
+- [`core/crawler.py`](crawler/src/dominican_llm_scraper/core/crawler.py): Firecrawl calls, discovery, retries, filters, and persistence.
+- [`utils/logging.py`](crawler/src/dominican_llm_scraper/utils/logging.py): session IDs and `key=value` event logs.
+- [`crawler/Makefile`](crawler/Makefile): the commands actually available to operators.
 
 </details>
 
 <details>
-<summary><strong>2. Cleaning and deduplication</strong> — from Markdown to reviewable duplicate evidence</summary>
+<summary><strong>2. Cleaning and deduplication:</strong> from Markdown to reviewable duplicate evidence</summary>
 
 ## Cleaning and deduplication
 
@@ -271,7 +271,7 @@ data/processed/
 
 The stages return evidence and canonical IDs; they do not delete or rewrite the `.txt` files.
 
-#### Stage 1 — exact normalized text
+#### Stage 1: exact normalized text
 
 [`stage_01_exact.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_01_exact.py) normalizes line endings, trims the document, and computes a SHA-256 hash. The first document with a hash is canonical; later documents with the same hash are duplicates.
 
@@ -281,7 +281,7 @@ comparison:    SHA-256 equality
 short-doc skip: none
 ```
 
-#### Stage 2 — near-duplicate wording
+#### Stage 2: near-duplicate wording
 
 [`stage_02_near_duplicate.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_02_near_duplicate.py) receives only Stage 1 survivors. It lowercases and whitespace-normalizes each document, tokenizes words, and builds five-token shingles. MinHash LSH proposes candidates; exact Jaccard similarity makes the final decision.
 
@@ -294,7 +294,7 @@ minimum length:     30 tokens
 
 Connected candidate pairs form groups, and the earliest document in processing order becomes canonical. Documents below the minimum length are reported as skipped rather than duplicated.
 
-#### Stage 3 — semantic similarity
+#### Stage 3: semantic similarity
 
 [`stage_03_semantic.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_03_semantic.py) receives Stage 2 survivors and asks local Ollama for embeddings:
 
@@ -310,7 +310,7 @@ The default duplicate rows use the strictest configured threshold, `0.95`. The r
 
 Clustering is a candidate-reduction step. Documents assigned to different clusters are not compared, so this stage can miss a semantically similar pair that falls across a cluster boundary.
 
-#### Stage 4 — exact repeated sentence spans
+#### Stage 4: exact repeated sentence spans
 
 [`stage_04_sentence_spans.py`](crawler/src/dominican_llm_scraper/core/processor/deduplication/stage_04_sentence_spans.py) does not compare every pair in the corpus. It starts from Stage 3 pair edges with cosine similarity at or above `0.90`, keeps same-domain pairs by default, and looks for an identical run of three consecutive sentences.
 
@@ -363,7 +363,7 @@ $ make compare-pdf IDS=0002,0080,0809
 </details>
 
 <details>
-<summary><strong>3. Model evaluation</strong> — quality metrics from Hugging Face, runtime metrics from Ollama</summary>
+<summary><strong>3. Model evaluation:</strong> quality metrics from Hugging Face, runtime metrics from Ollama</summary>
 
 ## Model evaluation
 
@@ -558,15 +558,15 @@ For a field-by-field metric reference, see [`model-evaluation/README.md`](model-
 
 ### Files worth reading
 
-- [`evaluate_corpus.py`](model-evaluation/evaluate_corpus.py) — input loading, context resolution, overlapping-window accounting, metrics, artifacts, and summary weighting.
-- [`run_ollama_runtime_eval.py`](model-evaluation/run_ollama_runtime_eval.py) — Ollama preflight, token-offset chunk planning, requests, and duration aggregation.
-- [`llm_eval_common.py`](model-evaluation/llm_eval_common.py) — causal-shift scoring and shared numerical helpers.
-- [`tests/test_evaluate_corpus.py`](model-evaluation/tests/test_evaluate_corpus.py) — executable examples for the 80% policy, overlap masking, offsets, and weighted summaries.
+- [`evaluate_corpus.py`](model-evaluation/evaluate_corpus.py): input loading, context resolution, overlapping-window accounting, metrics, artifacts, and summary weighting.
+- [`run_ollama_runtime_eval.py`](model-evaluation/run_ollama_runtime_eval.py): Ollama preflight, token-offset chunk planning, requests, and duration aggregation.
+- [`llm_eval_common.py`](model-evaluation/llm_eval_common.py): causal-shift scoring and shared numerical helpers.
+- [`tests/test_evaluate_corpus.py`](model-evaluation/tests/test_evaluate_corpus.py): executable examples for the 80% policy, overlap masking, offsets, and weighted summaries.
 
 </details>
 
 <details>
-<summary><strong>Development and verification</strong> — tests, reports, and working assumptions</summary>
+<summary><strong>Development and verification:</strong> tests, reports, and working assumptions</summary>
 
 ## Development and verification
 
@@ -600,7 +600,7 @@ The repository's generated directories are ignored. Preserve any result needed f
 </details>
 
 <details>
-<summary><strong>Responsible use</strong> — scope and source obligations</summary>
+<summary><strong>Responsible use:</strong> scope and source obligations</summary>
 
 ## Responsible use
 

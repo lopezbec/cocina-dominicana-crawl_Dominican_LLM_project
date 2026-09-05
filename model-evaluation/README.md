@@ -122,7 +122,7 @@ Window 2: tokens 16384..49151
 
 The overlapping prefix in each later window is provided to the model as context, but its labels are masked with `-100` and excluded from the loss. Only tokens not scored by a previous window contribute new NLL. The evaluator verifies that every document token after the first was scored exactly once.
 
-The file-level NLL is the sum of all chunk NLL values. File-level cross-entropy and perplexity are calculated from that sum and the number of uniquely scored tokens—not by averaging chunk perplexities:
+The file-level NLL is the sum of all chunk NLL values. File-level cross-entropy and perplexity are calculated from that sum and the number of uniquely scored tokens, rather than by averaging chunk perplexities:
 
 ```text
 file_cross_entropy = sum(chunk_total_nll) / sum(chunk_predicted_token_count)
